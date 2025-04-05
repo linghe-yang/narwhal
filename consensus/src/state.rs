@@ -1,9 +1,10 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crypto::{Digest, Hash as _, PublicKey};
 use log::debug;
-use primary::{Certificate, Round};
+use primary::{Certificate};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
+use model::scale_type::Round;
 
 /// The representation of the DAG in memory.
 pub type Dag = HashMap<Round, HashMap<PublicKey, (Digest, Certificate)>>;

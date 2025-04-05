@@ -9,6 +9,7 @@ use std::io::BufWriter;
 use std::io::Write as _;
 use std::net::SocketAddr;
 use thiserror::Error;
+use model::scale_type::{Id, Stake, WorkerId};
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -55,8 +56,7 @@ pub trait Export: Serialize {
     }
 }
 
-pub type Stake = u32;
-pub type WorkerId = u32;
+
 
 #[derive(Deserialize, Clone)]
 pub struct Parameters {
@@ -122,6 +122,9 @@ pub struct PrimaryAddresses {
     pub primary_to_primary: SocketAddr,
     /// Address to receive messages from our workers (LAN).
     pub worker_to_primary: SocketAddr,
+
+    pub breeze_addr: SocketAddr,
+    pub init_bft_addr: SocketAddr,
 }
 
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
@@ -172,6 +175,16 @@ impl Committee {
     }
 
     /// Returns the stake required to reach a quorum (2f+1).
+    pub fn authorities_quorum_threshold(&self) -> usize {
+        2 * self.authorities.len() / 3 + 1
+    }
+
+    /// Returns the stake required to reach availability (f+1).
+    pub fn authorities_fault_tolerance(&self) -> usize {
+        self.authorities.len() / 3
+    }
+
+    /// Returns the stake required to reach a quorum (2f+1).
     pub fn quorum_threshold(&self) -> Stake {
         // If N = 3f + 1 + k (0 <= k < 3)
         // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
@@ -187,11 +200,41 @@ impl Committee {
         (total_votes + 2) / 3
     }
 
+    pub fn get_id(&self, key: &PublicKey) -> Option<Id> {
+        self.authorities
+            .keys()
+            .position(|k| k == key)
+            .map(|idx| idx + 1)
+    }
+
+    pub fn get_all_ids(&self) -> Vec<(PublicKey, Id)> {
+        self.authorities
+            .keys()
+            .enumerate()
+            .map(|(idx, key)| (*key, idx + 1)) // 加1因为要求从1开始
+            .collect()
+    }
+
     /// Returns the primary addresses of the target primary.
     pub fn primary(&self, to: &PublicKey) -> Result<PrimaryAddresses, ConfigError> {
         self.authorities
             .get(to)
             .map(|x| x.primary.clone())
+            .ok_or_else(|| ConfigError::NotInCommittee(*to))
+    }
+
+    /// Returns the breeze address of the target primary.
+    pub fn breeze_address(&self, to: &PublicKey) -> Result<SocketAddr, ConfigError> {
+        self.authorities
+            .get(to)
+            .map(|x| x.primary.breeze_addr.clone())
+            .ok_or_else(|| ConfigError::NotInCommittee(*to))
+    }
+
+    pub fn init_bft_address(&self, to: &PublicKey) -> Result<SocketAddr, ConfigError> {
+        self.authorities
+            .get(to)
+            .map(|x| x.primary.init_bft_addr.clone())
             .ok_or_else(|| ConfigError::NotInCommittee(*to))
     }
 
@@ -203,7 +246,20 @@ impl Committee {
             .map(|(name, authority)| (*name, authority.primary.clone()))
             .collect()
     }
+    /// Returns all the breeze addresses
+    pub fn all_breeze_addresses(&self) -> Vec<(PublicKey, SocketAddr)> {
+        self.authorities
+            .iter()
+            .map(|(name, authority)| (*name, authority.primary.breeze_addr.clone()))
+            .collect()
+    }
 
+    pub fn all_init_bft_addresses(&self) -> Vec<(PublicKey, SocketAddr)> {
+        self.authorities
+            .iter()
+            .map(|(name, authority)| (*name, authority.primary.init_bft_addr.clone()))
+            .collect()
+    }
     /// Returns the addresses of a specific worker (`id`) of a specific authority (`to`).
     pub fn worker(&self, to: &PublicKey, id: &WorkerId) -> Result<WorkerAddresses, ConfigError> {
         self.authorities
@@ -253,7 +309,7 @@ impl Committee {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct KeyPair {
     /// The node's public key (and identifier).
     pub name: PublicKey,

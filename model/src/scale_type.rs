@@ -7,7 +7,9 @@ pub type Id = usize;
 pub type Stake = u32;
 pub type WorkerId = u32;
 
-pub static BEACON_PER_WAVE: OnceLock<u64> = OnceLock::new();
+pub type RandomNum = u64;
+
+pub static BEACON_PER_EPOCH: OnceLock<u64> = OnceLock::new();
 pub static MAX_WAVE: OnceLock<u64> = OnceLock::new();
 pub static MAX_EPOCH: OnceLock<u64> = OnceLock::new();
 

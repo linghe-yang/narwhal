@@ -1,3 +1,3 @@
 [workspace]
-members = ["primary", "node", "store", "crypto", "worker", "consensus", "network", "config", "model"]
+members = ["primary", "node", "store", "crypto", "worker", "consensus", "network", "config", "model", "bavss", "drb_coordinator", "bft"]
 resolver = "1"

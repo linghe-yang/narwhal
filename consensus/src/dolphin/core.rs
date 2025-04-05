@@ -2,13 +2,14 @@
 use crate::dolphin::committer::Committer;
 use crate::dolphin::virtual_state::VirtualState;
 use crate::state::State;
-use config::{Committee, Stake};
+use config::{Committee};
 use crypto::Hash as _;
 use log::{debug, info, log_enabled, warn};
-use primary::{Certificate, Metadata, Round};
+use primary::{Certificate, Metadata};
 use std::collections::BTreeSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use model::scale_type::{Round, Stake};
 
 pub struct Dolphin {
     /// The committee information.

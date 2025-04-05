@@ -18,7 +18,7 @@ pub mod crypto_tests;
 pub type CryptoError = ed25519::Error;
 
 /// Represents a hash digest (32 bytes).
-#[derive(Hash, PartialEq, Default, Eq, Clone, Deserialize, Serialize, Ord, PartialOrd)]
+#[derive(Copy, Hash, PartialEq, Default, Eq, Clone, Deserialize, Serialize, Ord, PartialOrd)]
 pub struct Digest(pub [u8; 32]);
 
 impl Digest {
@@ -118,6 +118,7 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 /// Represents a secret key (in bytes).
+#[derive(Clone)]
 pub struct SecretKey([u8; 64]);
 
 impl SecretKey {
@@ -175,7 +176,7 @@ where
 }
 
 /// Represents an ed25519 signature.
-#[derive(Serialize, Deserialize, Clone, Default, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Signature {
     part1: [u8; 32],
     part2: [u8; 32],

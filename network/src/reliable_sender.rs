@@ -98,6 +98,21 @@ impl ReliableSender {
         addresses.truncate(nodes);
         self.broadcast(addresses, data).await
     }
+
+    /// Dispatch the message in the HashMap to all the addresses in a reliable manner. It returns a vector of
+    /// cancel handlers ordered as the input `addresses` vector.
+    pub async fn dispatch_to_addresses(
+        &mut self,
+        map: HashMap<SocketAddr, Bytes>,
+    ) -> Vec<CancelHandler> {
+        let mut handlers = Vec::new();
+
+        for (address, data) in map {
+            let handler = self.send(address, data).await;
+            handlers.push(handler);
+        }
+        handlers
+    }
 }
 
 /// Simple message used by `ReliableSender` to communicate with its connections.

@@ -40,9 +40,10 @@ pub struct WitnessBreeze {
     pub poly_commit: RistrettoPoint,
     pub merkle_branch: (usize, Vec<u8>)
 }
-#[derive(Clone, Serialize, Deserialize, Default, Debug)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq, Hash)]
 pub struct BreezeCertificate {
     pub c: Digest,
+    pub epoch: Epoch,
     pub certificates: BTreeSet<(PublicKey,Signature)>,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -77,11 +78,12 @@ impl ReconstructShare {
 }
 
 impl BreezeCertificate {
-    pub fn new(c:Digest, pk:PublicKey, signature: Signature) -> Self {
+    pub fn new(c:Digest, pk:PublicKey, epoch: Epoch, signature: Signature) -> Self {
         let mut certificates = BTreeSet::new();
         certificates.insert((pk,signature));
         BreezeCertificate {
             c,
+            epoch,
             certificates,
         }
     }
@@ -131,7 +133,7 @@ pub struct ReplyMessage{
     pub epoch: Epoch,
     pub c: Digest,
     pub signature: Signature,
-    pub receiver: PublicKey,
+    pub dealer: PublicKey,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfirmMessage{
@@ -146,14 +148,14 @@ impl BreezeMessage {
             content: BreezeContent::Share(share),
         }
     }
-    pub fn new_reply_message(pk: PublicKey, receiver:PublicKey, c: Digest, signature: Signature, epoch: Epoch) -> Self {
+    pub fn new_reply_message(dealer: PublicKey, receiver:PublicKey, c: Digest, signature: Signature, epoch: Epoch) -> Self {
         BreezeMessage {
-            sender: pk,
+            sender: receiver,
             content: BreezeContent::Reply(ReplyMessage{
                 epoch,
                 c,
                 signature,
-                receiver,
+                dealer,
             }),
         }
     }

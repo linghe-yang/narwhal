@@ -1,7 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::error::{DagError, DagResult};
 use crate::messages::Certificate;
-use crate::primary::Round;
 use crypto::Digest;
 use futures::future::try_join_all;
 use futures::stream::futures_unordered::FuturesUnordered;
@@ -12,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use model::scale_type::Round;
 
 /// Waits to receive all the ancestors of a certificate before looping it back to the `Core`
 /// for further processing.

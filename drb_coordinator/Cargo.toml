@@ -1,0 +1,14 @@
+[package]
+name = "drb_coordinator"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+tokio = { version = "1.5.0", features = ["sync", "rt", "macros"] }
+
+model = { path = "../model"}
+config = { path = "../config"}
+thiserror = "2.0.12"
+[features]
+drb = []

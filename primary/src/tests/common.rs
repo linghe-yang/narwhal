@@ -41,6 +41,8 @@ pub fn committee() -> Committee {
                 let primary = PrimaryAddresses {
                     primary_to_primary: format!("127.0.0.1:{}", 100 + i).parse().unwrap(),
                     worker_to_primary: format!("127.0.0.1:{}", 200 + i).parse().unwrap(),
+                    breeze_addr: format!("127.0.0.1:{}", 600 + i).parse().unwrap(),
+                    init_bft_addr: format!("127.0.0.1:{}", 700 + i).parse().unwrap(),
                 };
                 let workers = vec![(
                     0,
@@ -58,6 +60,7 @@ pub fn committee() -> Committee {
                     Authority {
                         stake: 1,
                         primary,
+                        
                         workers,
                     },
                 )

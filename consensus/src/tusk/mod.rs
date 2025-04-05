@@ -1,10 +1,11 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::state::{Dag, State};
-use config::{Committee, Stake};
+use config::{Committee};
 use crypto::Digest;
 use log::{debug, info, log_enabled, warn};
-use primary::{Certificate, Round};
+use primary::{Certificate};
 use tokio::sync::mpsc::{Receiver, Sender};
+use model::scale_type::{Round, Stake};
 
 #[cfg(test)]
 #[path = "tests/tusk_tests.rs"]

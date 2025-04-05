@@ -2,7 +2,7 @@
 use crate::aggregators::{CertificatesAggregator, VotesAggregator};
 use crate::error::{DagError, DagResult};
 use crate::messages::{Certificate, Header, Vote};
-use crate::primary::{PrimaryMessage, Round};
+use crate::primary::{PrimaryMessage};
 use crate::synchronizer::Synchronizer;
 use async_recursion::async_recursion;
 use bytes::Bytes;
@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
+use model::scale_type::Round;
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]

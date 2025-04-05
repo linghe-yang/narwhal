@@ -1,7 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::worker::{Round, WorkerMessage};
 use bytes::Bytes;
-use config::{Committee, WorkerId};
+use config::{Committee};
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use store::{Store, StoreError};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use model::scale_type::WorkerId;
 
 #[cfg(test)]
 #[path = "tests/synchronizer_tests.rs"]

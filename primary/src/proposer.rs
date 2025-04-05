@@ -1,8 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::messages::Metadata;
 use crate::messages::{Certificate, Header};
-use crate::primary::Round;
-use config::{Committee, WorkerId};
+use config::{Committee};
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, SignatureService};
 #[cfg(feature = "benchmark")]
@@ -11,6 +10,7 @@ use log::{debug, log_enabled};
 use std::collections::VecDeque;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use model::scale_type::{Round, WorkerId};
 
 #[cfg(test)]
 #[path = "tests/proposer_tests.rs"]

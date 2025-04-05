@@ -3,8 +3,9 @@ use crate::state::Dag;
 use config::Committee;
 use crypto::{Digest, Hash as _, PublicKey};
 use log::debug;
-use primary::{Certificate, Round};
+use primary::{Certificate};
 use std::collections::{HashMap, HashSet};
+use model::scale_type::Round;
 
 /// The virtual consensus state. This state is interpreted from metadata included in the certificates
 /// and can be derived from the real state (`State`).

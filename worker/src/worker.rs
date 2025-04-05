@@ -7,7 +7,7 @@ use crate::quorum_waiter::QuorumWaiter;
 use crate::synchronizer::Synchronizer;
 use async_trait::async_trait;
 use bytes::Bytes;
-use config::{Committee, Parameters, WorkerId};
+use config::{Committee, Parameters};
 use crypto::{Digest, PublicKey};
 use futures::sink::SinkExt as _;
 use log::{error, info, warn};
@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use store::Store;
 use tokio::sync::mpsc::{channel, Sender};
+use model::scale_type::WorkerId;
 
 #[cfg(test)]
 #[path = "tests/worker_tests.rs"]

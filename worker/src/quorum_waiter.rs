@@ -1,11 +1,12 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::processor::SerializedBatchMessage;
-use config::{Committee, Stake};
+use config::{Committee};
 use crypto::PublicKey;
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver, Sender};
+use model::scale_type::Stake;
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]

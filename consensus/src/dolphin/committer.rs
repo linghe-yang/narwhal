@@ -1,10 +1,11 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::dolphin::virtual_state::VirtualState;
 use crate::state::{Dag, State};
-use config::{Committee, Stake};
+use config::{Committee};
 use log::{debug, log_enabled};
-use primary::{Certificate, Round};
+use primary::{Certificate};
 use std::collections::HashSet;
+use model::scale_type::{Round, Stake};
 
 pub struct Committer {
     /// The committee information.

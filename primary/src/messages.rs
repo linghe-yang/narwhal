@@ -1,7 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::error::{DagError, DagResult};
-use crate::primary::Round;
-use config::{Committee, WorkerId};
+use config::{Committee};
 use crypto::{Digest, Hash, PublicKey, Signature, SignatureService};
 use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
@@ -9,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::fmt;
-
+use model::scale_type::{Round, WorkerId};
 // TODO: Make metadata generic.
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]

@@ -1,11 +1,12 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use bytes::Bytes;
-use config::{Committee, WorkerId};
+use config::{Committee};
 use crypto::{Digest, PublicKey};
 use log::{error, warn};
 use network::SimpleSender;
 use store::Store;
 use tokio::sync::mpsc::Receiver;
+use model::scale_type::WorkerId;
 
 #[cfg(test)]
 #[path = "tests/helper_tests.rs"]

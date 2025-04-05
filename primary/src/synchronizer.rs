@@ -2,13 +2,13 @@
 use crate::error::DagResult;
 use crate::header_waiter::WaiterMessage;
 use crate::messages::{Certificate, Header};
-use crate::primary::Round;
 use config::Committee;
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey};
 use std::collections::HashMap;
 use store::Store;
 use tokio::sync::mpsc::Sender;
+use model::scale_type::Round;
 
 /// The `Synchronizer` checks if we have all batches and parents referenced by a header. If we don't, it sends
 /// a command to the `Waiter` to request the missing data.

@@ -1,10 +1,11 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::error::{DagError, DagResult};
 use crate::messages::{Certificate, Header, Vote};
-use config::{Committee, Stake};
+use config::{Committee};
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, Signature};
 use std::collections::HashSet;
+use model::scale_type::Stake;
 
 /// Aggregates votes for a particular header into a certificate.
 pub struct VotesAggregator {

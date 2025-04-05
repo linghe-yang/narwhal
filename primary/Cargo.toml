@@ -24,6 +24,8 @@ store = { path = "../store" }
 config = { path = "../config" }
 network = { path = "../network" }
 
+model = { path = "../model"}
+
 [dev-dependencies]
 rand = "0.7.3"
 

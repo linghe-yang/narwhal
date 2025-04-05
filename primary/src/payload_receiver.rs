@@ -1,8 +1,8 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
-use config::WorkerId;
 use crypto::Digest;
 use store::Store;
 use tokio::sync::mpsc::Receiver;
+use model::scale_type::WorkerId;
 
 /// Receives batches' digests of other authorities. These are only needed to verify incoming
 /// headers (ie. make sure we have their payload).

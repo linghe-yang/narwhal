@@ -27,6 +27,8 @@ pub fn mock_committee() -> Committee {
                         primary: PrimaryAddresses {
                             primary_to_primary: "0.0.0.0:0".parse().unwrap(),
                             worker_to_primary: "0.0.0.0:0".parse().unwrap(),
+                            breeze_addr:"0.0.0.0:0".parse().unwrap(),
+                            init_bft_addr:"0.0.0.0:0".parse().unwrap(),
                         },
                         workers: HashMap::default(),
                     },
