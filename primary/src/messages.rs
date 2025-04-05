@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::fmt;
+use model::breeze_structs::BreezeCertificate;
 use model::scale_type::{Round, WorkerId};
 // TODO: Make metadata generic.
 
@@ -50,6 +51,8 @@ pub struct Header {
     pub metadata: Option<Metadata>,
     pub id: Digest,
     pub signature: Signature,
+
+    pub breeze_cer: Option<BreezeCertificate>
 }
 
 impl Header {
@@ -60,6 +63,8 @@ impl Header {
         parents: BTreeSet<Digest>,
         metadata: Option<Metadata>,
         signature_service: &mut SignatureService,
+
+        breeze_cer: Option<BreezeCertificate>
     ) -> Self {
         let header = Self {
             author,
@@ -69,6 +74,8 @@ impl Header {
             metadata,
             id: Digest::default(),
             signature: Signature::default(),
+
+            breeze_cer
         };
         let id = header.digest();
         let signature = signature_service.request_signature(id.clone()).await;
@@ -116,6 +123,12 @@ impl Hash for Header {
         if let Some(metadata) = &self.metadata {
             hasher.update(metadata);
         }
+
+        if let Some(cer) = &self.breeze_cer {
+            let serialized = bincode::serialize(&cer).expect("Failed to serialize breeze certificate");
+            hasher.update(serialized);
+        }
+
         Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
     }
 }

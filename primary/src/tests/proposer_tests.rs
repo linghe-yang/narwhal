@@ -13,6 +13,7 @@ async fn propose_empty() {
     let (tx_headers, mut rx_headers) = channel(1);
     let (_tx_metadata, rx_metadata) = channel(1);
 
+    let (_breeze_sender,breeze_receiver) = channel(1);
     // Spawn the proposer.
     Proposer::spawn(
         name,
@@ -24,6 +25,8 @@ async fn propose_empty() {
         /* rx_workers */ rx_our_digests,
         /* tx_core */ tx_headers,
         /* rx_consensus */ rx_metadata,
+        
+        breeze_receiver
     );
 
     // Ensure the proposer makes a correct empty header.
@@ -43,6 +46,7 @@ async fn propose_payload() {
     let (tx_headers, mut rx_headers) = channel(1);
     let (_tx_metadata, rx_metadata) = channel(1);
 
+    let (_breeze_sender,breeze_receiver) = channel(1);
     // Spawn the proposer.
     Proposer::spawn(
         name,
@@ -54,6 +58,8 @@ async fn propose_payload() {
         /* rx_workers */ rx_our_digests,
         /* tx_core */ tx_headers,
         /* rx_consensus */ rx_metadata,
+
+        breeze_receiver
     );
 
     // Send enough digests for the header payload.

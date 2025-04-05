@@ -5,7 +5,12 @@ use crypto::{Digest, Hash as _, PublicKey};
 use log::debug;
 use primary::{Certificate};
 use std::collections::{HashMap, HashSet};
-use model::scale_type::Round;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::RwLock;
+use drb_coordinator::error::DrbError;
+use model::scale_type::{RandomNum, Round};
 
 /// The virtual consensus state. This state is interpreted from metadata included in the certificates
 /// and can be derived from the real state (`State`).
@@ -21,15 +26,35 @@ pub struct VirtualState {
     pub fallback_authorities_sets: HashMap<Round, HashSet<PublicKey>>,
 
     pub _steady_state: bool,
+
+    pub global_coin_recon_req_sender: Sender<Round>,
+    pub global_coin_buffer: Arc<RwLock<HashMap<Round, RandomNum>>>,
 }
 
 impl VirtualState {
     /// Create a new (empty) virtual state.
-    pub fn new(committee: Committee, genesis: Vec<Certificate>) -> Self {
+    pub fn new(committee: Committee, genesis: Vec<Certificate>, global_coin_recon_req_sender: Sender<Round>, mut global_coin_res_receiver: Receiver<(Round,Result<RandomNum, DrbError>)>) -> Self {
         let genesis = genesis
             .into_iter()
             .map(|x| (x.origin(), (x.digest(), x)))
             .collect::<HashMap<_, _>>();
+
+        let global_coin_buffer= Arc::new(RwLock::new(HashMap::new()));
+        let buffer_ref = Arc::clone(&global_coin_buffer);
+        let s = global_coin_recon_req_sender.clone();
+        tokio::spawn(async move {
+            loop{
+                let res = global_coin_res_receiver.recv().await.unwrap();
+                if let Ok(random_num) = res.1 {
+                    let mut write_lock = buffer_ref.write().await;
+                    write_lock.insert(res.0, random_num);
+                    drop(write_lock);
+                }else {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    s.send(res.0).await.unwrap();
+                }
+            }
+        });
 
         Self {
             committee: committee.clone(),
@@ -40,6 +65,9 @@ impl VirtualState {
                 .collect(),
             fallback_authorities_sets: HashMap::new(),
             _steady_state: true,
+
+            global_coin_recon_req_sender,
+            global_coin_buffer
         }
     }
 
@@ -111,14 +139,29 @@ impl VirtualState {
 
     /// Returns the certificate (and the certificate's digest) originated by the fallback leader
     /// of the specified round (if any).
-    pub fn fallback_leader(&self, wave: Round) -> Option<&(Digest, Certificate)> {
+    pub async fn fallback_leader(&self, wave: Round) -> Option<&(Digest, Certificate)> {
         // TODO: We should elect the leader of round r-2 using the common coin revealed at round r.
         // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
         // compute the coin). We currently just use round-robin.
+
+
         #[cfg(test)]
         let coin = 0;
         #[cfg(not(test))]
         let coin = wave;
+
+        let mut coin = 0;
+        self.global_coin_recon_req_sender.send(wave).await.unwrap();
+        loop {
+            match self.global_coin_buffer.read().await.get(&wave) {
+                Some(r) => {
+                    println!("random for round: {} is {}", wave, r);
+                    coin = *r;
+                    break;
+                }
+                _ => {}
+            }
+        }
 
         // Elect the leader.
         let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();

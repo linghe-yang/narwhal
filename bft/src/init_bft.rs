@@ -134,7 +134,7 @@ impl InitBFT {
                 Some(message) = self.decided_from_other_receiver.recv() =>{
                     let mut flag = true;
                     match message.content {
-                        DumboContent::Decided((cc,sigs)) => {
+                        DumboContent::Decided((ref cc,ref sigs)) => {
                             for cer in cc.iter(){
                                 if !cer.verify(quorum_threshold) {
                                     flag = false;
@@ -159,6 +159,7 @@ impl InitBFT {
                         },
                         _ => {}
                     }
+                    self.broadcaster(message).await;
                 }
             }
 

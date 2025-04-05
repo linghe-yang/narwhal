@@ -9,7 +9,8 @@ use primary::{Certificate, Metadata};
 use std::collections::BTreeSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
-use model::scale_type::{Round, Stake};
+use drb_coordinator::error::DrbError;
+use model::scale_type::{RandomNum, Round, Stake};
 
 pub struct Dolphin {
     /// The committee information.
@@ -47,6 +48,9 @@ impl Dolphin {
         tx_commit: Sender<Certificate>,
         tx_parents: Sender<Metadata>,
         tx_output: Sender<Certificate>,
+
+        global_coin_recon_req_sender: Sender<Round>,
+        global_coin_res_receiver: Receiver<(Round,Result<RandomNum, DrbError>)>
     ) {
         tokio::spawn(async move {
             Self {
@@ -61,15 +65,15 @@ impl Dolphin {
                 virtual_round: 0,
                 committer: Committer::new(committee, gc_depth),
             }
-            .run()
+            .run(global_coin_recon_req_sender,global_coin_res_receiver)
             .await;
         });
     }
 
-    async fn run(&mut self) {
+    async fn run(&mut self, global_coin_recon_req_sender: Sender<Round>,global_coin_res_receiver: Receiver<(Round,Result<RandomNum, DrbError>)>) {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.gc_depth, self.genesis.clone());
-        let mut virtual_state = VirtualState::new(self.committee.clone(), self.genesis.clone());
+        let mut virtual_state = VirtualState::new(self.committee.clone(), self.genesis.clone(), global_coin_recon_req_sender, global_coin_res_receiver);
 
         // The timer keeping track of the leader timeout.
         let timer = sleep(Duration::from_millis(self.timeout));
@@ -119,7 +123,7 @@ impl Dolphin {
                     debug!("Adding virtual {:?}", certificate);
 
                     // Try to commit.
-                    let sequence = self.committer.try_commit(&certificate, &mut state, &mut virtual_state);
+                    let sequence = self.committer.try_commit(&certificate, &mut state, &mut virtual_state).await;
 
                     // Log the latest committed round of every authority (for debug).
                     if log_enabled!(log::Level::Debug) {

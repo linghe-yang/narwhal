@@ -1,6 +1,5 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use anyhow::{Context, Result};
-#[cfg(feature = "breeze_share_test")]
 use bavss::Breeze;
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use config::Export as _;
@@ -13,12 +12,14 @@ use env_logger::Env;
 use model::scale_type::{WorkerId, BEACON_PER_EPOCH, MAX_EPOCH, MAX_WAVE};
 use primary::{Certificate, Primary};
 use std::sync::Arc;
+use std::time::Duration;
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
 use bft::init_bft::InitBFT;
 #[cfg(feature = "dolphin")]
 use consensus::Dolphin;
+use model::breeze_structs::BreezeCertificate;
 use worker::Worker;
 
 /// The default channel capacity.
@@ -101,120 +102,125 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     // Channels the sequence of certificates.
     let (tx_output, rx_output) = channel(CHANNEL_CAPACITY);
 
+    let (cer_to_coord_sender, cer_to_coord_receiver) =
+        channel(CHANNEL_CAPACITY);
     // Check whether to run a primary, a worker, or an entire authority.
     match matches.subcommand() {
         // Spawn the primary and consensus core.
         ("primary", _) => {
-            #[cfg(feature = "breeze_share_test")]
-            {
-                BEACON_PER_EPOCH.set(20).unwrap();
-                MAX_WAVE.set(4).unwrap();
-                MAX_EPOCH.set(20).unwrap();
-                let (breeze_share_cmd_sender, breeze_share_cmd_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (breeze_certificate_sender, breeze_certificate_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (cer_to_consensus_sender, _cer_to_consensus_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (cer_to_init_consensus_sender, cer_to_init_consensus_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (_cer_to_coord_sender, cer_to_coord_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (init_cc_to_coord_sender, init_cc_to_coord_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (_global_coin_recon_req_sender, global_coin_recon_req_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (_beacon_recon_req_sender, beacon_recon_req_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (breeze_reconstruct_cmd_sender, breeze_reconstruct_cmd_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (breeze_result_sender, _breeze_result_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (global_coin_res_sender, mut global_coin_res_receiver) =
-                    channel(CHANNEL_CAPACITY);
-                let (beacon_res_sender, _beacon_res_receiver) =
-                    channel(CHANNEL_CAPACITY);
+            BEACON_PER_EPOCH.set(20).unwrap();
+            MAX_WAVE.set(4).unwrap();
+            MAX_EPOCH.set(20).unwrap();
+            let (breeze_share_cmd_sender, breeze_share_cmd_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (breeze_certificate_sender, breeze_certificate_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (cer_to_consensus_sender, cer_to_consensus_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (cer_to_init_consensus_sender, cer_to_init_consensus_receiver) =
+                channel(CHANNEL_CAPACITY);
 
-                // generate_crs_file(&committee);
-                let crs = Arc::new(RwLock::new(bavss::load_crs()?));
-                
-                let mut address = committee.breeze_address(&keypair.name)?;
-                address.set_ip("0.0.0.0".parse()?);
-                let id = committee.get_id(&keypair.name).unwrap();
-                let bft_address = committee.init_bft_address(&keypair.name)?;
-                InitBFT::spawn(
-                    keypair.clone(),
-                    bft_address,
-                    committee.clone(),
-                    cer_to_init_consensus_receiver,
-                    init_cc_to_coord_sender
-                ).await;
-                let committee = Arc::new(RwLock::new(committee));
-                Breeze::spawn(
-                    keypair,
-                    address,
-                    id,
-                    Arc::clone(&committee),
-                    breeze_share_cmd_receiver,
-                    breeze_certificate_sender,
-                    breeze_reconstruct_cmd_receiver,
-                    breeze_result_sender,
-                    crs,
-                );
-                Coordinator::spawn(
-                    Arc::clone(&committee),
-                    breeze_share_cmd_sender,
-                    breeze_certificate_receiver,
-                    cer_to_consensus_sender,
-                    cer_to_init_consensus_sender,
-                    cer_to_coord_receiver,
-                    init_cc_to_coord_receiver,
-                    global_coin_recon_req_receiver,
-                    beacon_recon_req_receiver,
-                    breeze_reconstruct_cmd_sender,
-                    _breeze_result_receiver,
-                    global_coin_res_sender,
-                    beacon_res_sender,
-                ).await;
-                // let res = global_coin_res_receiver.recv().await.unwrap();
-            }
-            #[cfg(not(feature = "breeze_share_test"))]
+            let (init_cc_to_coord_sender, init_cc_to_coord_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (global_coin_recon_req_sender, global_coin_recon_req_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (_beacon_recon_req_sender, beacon_recon_req_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (breeze_reconstruct_cmd_sender, breeze_reconstruct_cmd_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (breeze_result_sender, breeze_result_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (global_coin_res_sender, global_coin_res_receiver) =
+                channel(CHANNEL_CAPACITY);
+            let (beacon_res_sender, _beacon_res_receiver) =
+                channel(CHANNEL_CAPACITY);
+
+            // generate_crs_file(&committee);
+            let crs = Arc::new(RwLock::new(bavss::load_crs()?));
+
+            let mut address = committee.breeze_address(&keypair.name)?;
+            address.set_ip("0.0.0.0".parse()?);
+            let id = committee.get_id(&keypair.name).unwrap();
+            let bft_address = committee.init_bft_address(&keypair.name)?;
+
+            Breeze::spawn(
+                keypair.clone(),
+                address,
+                id,
+                // Arc::clone(&committee),
+                committee.clone(),
+                breeze_share_cmd_receiver,
+                breeze_certificate_sender,
+                breeze_reconstruct_cmd_receiver,
+                breeze_result_sender,
+                crs,
+            );
+
+            InitBFT::spawn(
+                keypair.clone(),
+                bft_address,
+                committee.clone(),
+                cer_to_init_consensus_receiver,
+                init_cc_to_coord_sender
+            ).await;
+            // let committee = Arc::new(RwLock::new(committee));
+
+            Coordinator::spawn(
+                // Arc::clone(&committee),
+                committee.clone(),
+                breeze_share_cmd_sender,
+                breeze_certificate_receiver,
+                cer_to_consensus_sender,
+                cer_to_init_consensus_sender,
+                cer_to_coord_receiver,
+                init_cc_to_coord_receiver,
+                global_coin_recon_req_receiver,
+                beacon_recon_req_receiver,
+                breeze_reconstruct_cmd_sender,
+                breeze_result_receiver,
+                global_coin_res_sender,
+                beacon_res_sender,
+            ).await;
+            let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
+            let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
+            let (tx_metadata, rx_metadata) = channel(CHANNEL_CAPACITY);
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            #[cfg(not(feature = "dolphin"))]
             {
-                let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
-                let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
-                let (tx_metadata, rx_metadata) = channel(CHANNEL_CAPACITY);
-                #[cfg(not(feature = "dolphin"))]
-                {
-                    Tusk::spawn(
-                        committee.clone(),
-                        parameters.gc_depth,
-                        /* rx_primary */ rx_new_certificates,
-                        tx_commit,
-                        tx_output,
-                    );
-                    let _not_used = tx_metadata;
-                }
-                #[cfg(feature = "dolphin")]
-                Dolphin::spawn(
+                Tusk::spawn(
                     committee.clone(),
-                    parameters.timeout,
                     parameters.gc_depth,
                     /* rx_primary */ rx_new_certificates,
                     tx_commit,
-                    tx_metadata,
                     tx_output,
                 );
-
-                Primary::spawn(
-                    keypair,
-                    committee,
-                    parameters.clone(),
-                    store,
-                    /* tx_output */ tx_new_certificates,
-                    rx_commit,
-                    rx_metadata,
-                );
+                let _not_used = tx_metadata;
             }
+            #[cfg(feature = "dolphin")]
+            Dolphin::spawn(
+                committee.clone(),
+                parameters.timeout,
+                parameters.gc_depth,
+                /* rx_primary */ rx_new_certificates,
+                tx_commit,
+                tx_metadata,
+                tx_output,
+
+                global_coin_recon_req_sender,
+                global_coin_res_receiver
+            );
+
+            Primary::spawn(
+                keypair,
+                committee,
+                parameters.clone(),
+                store,
+                /* tx_output */ tx_new_certificates,
+                rx_commit,
+                rx_metadata,
+
+                cer_to_consensus_receiver,
+            );
         }
 
         // Spawn a single worker.
@@ -230,15 +236,20 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     }
 
     // Analyze the consensus' output.
-    analyze(rx_output).await;
+    analyze(rx_output,cer_to_coord_sender).await;
 
     // If this expression is reached, the program ends and all other tasks terminate.
     unreachable!();
 }
 
 /// Receives an ordered list of certificates and apply any application-specific logic.
-async fn analyze(mut rx_output: Receiver<Certificate>) {
-    while let Some(_certificate) = rx_output.recv().await {
+async fn analyze(mut rx_output: Receiver<Certificate>, cer_to_coord_sender: Sender<BreezeCertificate>) {
+    while let Some(certificate) = rx_output.recv().await {
+        println!("ordered vertex recv");
+        // send breeze_certificate which has been a_delivered to drb.
+        if let Some(cer) = certificate.header.breeze_cer{
+            cer_to_coord_sender.send(cer).await.unwrap();
+        }
         // NOTE: Here goes the application logic.
     }
 }

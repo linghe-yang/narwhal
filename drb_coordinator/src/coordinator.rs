@@ -1,7 +1,7 @@
-use crate::error::DagError;
+use crate::error::DrbError;
 use config::Committee;
 use model::breeze_structs::{BreezeCertificate, BreezeReconRequest};
-use model::scale_type::{get_epoch, get_wave_by_round, Epoch, RandomNum, Round, BEACON_PER_EPOCH, MAX_WAVE};
+use model::scale_type::{get_epoch_by_round, get_epoch_by_wave, get_round_by_epoch_wave, get_wave_by_round, Epoch, RandomNum, Round, Wave, BEACON_PER_EPOCH, MAX_EPOCH, MAX_WAVE};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -27,9 +27,9 @@ pub struct Coordinator {
     b_recon_req_sender: Sender<BreezeReconRequest>,
     b_recon_res_receiver: Receiver<(Epoch, usize, RandomNum)>,
     // send reconstructed global random coin to consensus
-    global_coin_res_sender: Sender<Result<RandomNum, DagError>>,
+    global_coin_res_sender: Sender<(Round,Result<RandomNum, DrbError>)>,
     // send reconstructed beacon value to consumer
-    beacon_res_sender: Sender<Result<RandomNum, DagError>>,
+    beacon_res_sender: Sender<Result<RandomNum, DrbError>>,
     
     certificate_buffer : HashMap<Epoch, Vec<BreezeCertificate>>,
 
@@ -39,7 +39,8 @@ pub struct Coordinator {
 
 impl Coordinator {
     pub async fn spawn(
-        committee: Arc<RwLock<Committee>>,
+        // committee: Arc<RwLock<Committee>>,
+        committee: Committee,
         b_share_cmd_sender: Sender<Epoch>,
         certificate_from_breeze: Receiver<BreezeCertificate>,
         certificate_to_consensus: Sender<BreezeCertificate>,
@@ -50,13 +51,13 @@ impl Coordinator {
         beacon_recon_req_receiver: Receiver<(Epoch, usize)>,
         b_recon_req_sender: Sender<BreezeReconRequest>,
         b_recon_res_receiver: Receiver<(Epoch, usize, RandomNum)>,
-        global_coin_res_sender: Sender<Result<RandomNum, DagError>>,
-        beacon_res_sender: Sender<Result<RandomNum, DagError>>,
+        global_coin_res_sender: Sender<(Round,Result<RandomNum, DrbError>)>,
+        beacon_res_sender: Sender<Result<RandomNum, DrbError>>,
     ) {
         let certificate_buffer = HashMap::new();
         let decided_common_core = HashSet::new();
         let beacon_reconstructed = HashSet::new();
-        
+        let committee = Arc::new(RwLock::new(committee));
         tokio::spawn(async move {
             Self {
                 committee,
@@ -83,6 +84,7 @@ impl Coordinator {
     }
     async fn run(&mut self) {
         self.b_share_cmd_sender.send(0).await.unwrap();
+        let max_epoch = *MAX_EPOCH.get().unwrap();
         let max_wave = *MAX_WAVE.get().unwrap();
         let beacon_per_epoch = *BEACON_PER_EPOCH.get().unwrap();
         loop {
@@ -95,7 +97,7 @@ impl Coordinator {
                     }
                 }
                 Some(cc) = self.cc_decided_from_init_consensus.recv()=>{
-                    println!("init common core is {:?}",cc);
+                    println!("I have init");
                     self.certificate_buffer.insert(0, cc);
                     self.decided_common_core.insert(0);
                 }
@@ -126,42 +128,59 @@ impl Coordinator {
                 }
 
                 Some(round) = self.global_coin_recon_req_receiver.recv() =>{
-                    let epoch = get_epoch(round) - 1;
-                    let wave = get_wave_by_round(round);
+                    println!("global coin_recon_req_receiver is {:?}",round);
+                    let epoch: Epoch = get_epoch_by_wave(round) - 1;
+                    let wave: Wave = round - epoch * max_epoch;
                     if !self.decided_common_core.contains(&epoch){
-                        self.global_coin_res_sender.send(Err(DagError::NoCommonCore)).await.unwrap();
+                        self.global_coin_res_sender.send((round,Err(DrbError::NoCommonCore))).await.unwrap();
+                        continue;
                     }
-                    let certificates = &self.certificate_buffer[&epoch];
-                    let recon_req = BreezeReconRequest{
-                        c: certificates.iter().map(|x| x.c).collect(),
-                        epoch,
-                        index:wave as usize
-                    };
-                    self.b_recon_req_sender.send(recon_req).await.unwrap();
+                    let index = wave as usize;
+                    let mut flag = true;
+                    for (e,i,v) in self.beacon_reconstructed.iter(){
+                        if e == &epoch && i == &index{
+                            self.global_coin_res_sender.send((round,Ok(*v))).await.unwrap();
+                            flag = false;
+                            break;
+                        }
+                    }
+                    if flag{
+                        let certificates = &self.certificate_buffer[&epoch];
+                        let recon_req = BreezeReconRequest{
+                            c: certificates.iter().map(|x| x.c).collect(),
+                            epoch,
+                            index
+                        };
+                        self.b_recon_req_sender.send(recon_req).await.unwrap();
+                    }
                 }
 
                 Some((epoch,index)) = self.beacon_recon_req_receiver.recv() =>{
                     if !self.decided_common_core.contains(&epoch){
-                        self.global_coin_res_sender.send(Err(DagError::NoCommonCore)).await.unwrap();
+                        self.beacon_res_sender.send(Err(DrbError::NoCommonCore)).await.unwrap();
+                        continue;
                     }
 
                     if index > beacon_per_epoch as usize{
-                        self.global_coin_res_sender.send(Err(DagError::InvalidIndex)).await.unwrap();
+                        self.beacon_res_sender.send(Err(DrbError::InvalidIndex)).await.unwrap();
+                        continue;
                     }
                     
                     let certificates = &self.certificate_buffer[&epoch];
                     let recon_req = BreezeReconRequest{
                         c: certificates.iter().map(|x| x.c).collect(),
                         epoch,
-                        index:index + max_wave as usize
+                        index:index + max_epoch as usize
                     };
                     self.b_recon_req_sender.send(recon_req).await.unwrap();
                 }
                 
                 Some((epoch,index,value)) = self.b_recon_res_receiver.recv() =>{
+                    println!("b_recon_res_receiver for index:{} is {:?}",index,value);
                     self.beacon_reconstructed.insert((epoch, index, value));
-                    if index <= max_wave as usize{
-                        self.global_coin_res_sender.send(Ok(value)).await.unwrap();
+                    if index <= max_epoch as usize{
+                        let round = epoch * max_epoch + index as u64;
+                        self.global_coin_res_sender.send((round,Ok(value))).await.unwrap();
                     }else if index <= (max_wave+ beacon_per_epoch) as usize{
                         self.beacon_res_sender.send(Ok(value)).await.unwrap();
                     }

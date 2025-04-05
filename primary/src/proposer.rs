@@ -10,6 +10,7 @@ use log::{debug, log_enabled};
 use std::collections::VecDeque;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use model::breeze_structs::BreezeCertificate;
 use model::scale_type::{Round, WorkerId};
 
 #[cfg(test)]
@@ -46,6 +47,9 @@ pub struct Proposer {
     payload_size: usize,
     /// The metadata to include in the next header.
     metadata: VecDeque<Metadata>,
+
+    breeze_cer_buffer: VecDeque<BreezeCertificate>,
+    cer_to_consensus_receiver: Receiver<BreezeCertificate>,
 }
 
 impl Proposer {
@@ -60,12 +64,15 @@ impl Proposer {
         rx_workers: Receiver<(Digest, WorkerId)>,
         tx_core: Sender<Header>,
         rx_consensus: Receiver<Metadata>,
+
+        cer_to_consensus_receiver: Receiver<BreezeCertificate>,
     ) {
         let genesis = Certificate::genesis(committee)
             .iter()
             .map(|x| x.digest())
             .collect();
 
+        let breeze_cer_buffer = VecDeque::new();
         tokio::spawn(async move {
             Self {
                 name,
@@ -81,6 +88,9 @@ impl Proposer {
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
                 metadata: VecDeque::new(),
+
+                breeze_cer_buffer,
+                cer_to_consensus_receiver
             }
             .run()
             .await;
@@ -96,6 +106,8 @@ impl Proposer {
             self.last_parents.drain(..).collect(),
             self.metadata.pop_back(),
             &mut self.signature_service,
+
+            self.breeze_cer_buffer.pop_front(),
         )
         .await;
         debug!("Created {:?}", header);
@@ -171,6 +183,10 @@ impl Proposer {
                 }
                 Some(metadata) = self.rx_consensus.recv() => {
                     self.metadata.push_front(metadata);
+                }
+                // certificate from breeze.
+                Some(cer) = self.cer_to_consensus_receiver.recv() => {
+                    self.breeze_cer_buffer.push_back(cer);
                 }
                 () = &mut timer => {
                     // Nothing to do.

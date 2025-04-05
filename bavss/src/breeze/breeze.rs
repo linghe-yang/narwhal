@@ -24,7 +24,8 @@ impl Breeze {
         keypair: KeyPair,
         address: SocketAddr,
         id:Id,
-        committee: Arc<RwLock<Committee>>,
+        // committee: Arc<RwLock<Committee>>,
+        committee: Committee,
         breeze_share_cmd_receiver: Receiver<Epoch>,
         breeze_certificate_sender: Sender<BreezeCertificate>,
         breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
@@ -35,6 +36,7 @@ impl Breeze {
         let pk = keypair.name;
         let sk = keypair.secret;
         let node_id = (pk,id);
+        let committee = Arc::new(RwLock::new(committee));
         let (breeze_share_sender, breeze_share_receiver) =
             channel::<BreezeMessage>(DEFAULT_CHANNEL_CAPACITY);
         let (breeze_confirm_sender, breeze_confirm_receiver) =

@@ -26,7 +26,7 @@ impl Committer {
     }
 
     /// Try to commit. If we succeed, output am ordered sequence.
-    pub fn try_commit(
+    pub async fn try_commit(
         &mut self,
         certificate: &Certificate,
         state: &mut State,
@@ -35,7 +35,7 @@ impl Committer {
         let mut sequence = Vec::new();
 
         // Update the leader mode to decide whether we can commit the leader.
-        let leader = self.update_validator_mode(&certificate, virtual_state);
+        let leader = self.update_validator_mode(&certificate, virtual_state).await;
 
         //if last_leader.is_none() && certificate.origin() == self.name {
         //    virtual_state.steady = false;
@@ -57,6 +57,7 @@ impl Committer {
             // Get an ordered list of past leaders that are linked to the current leader.
             for leader in self
                 .order_leaders(&last_leader, &virtual_state, last_committed_wave)
+                .await
                 .iter()
                 .rev()
             {
@@ -77,7 +78,7 @@ impl Committer {
 
     /// Updates the authorities mode (steady state vs fallback) and return whether we can commit
     /// the leader of the wave.
-    fn update_validator_mode(
+    async fn update_validator_mode(
         &self,
         certificate: &Certificate,
         state: &mut VirtualState,
@@ -130,7 +131,7 @@ impl Committer {
             .or_insert_with(HashSet::new)
             .contains(&certificate.origin())
         {
-            let leader = self.check_fallback_commit(certificate, fallback_wave - 1, state);
+            let leader = self.check_fallback_commit(certificate, fallback_wave - 1, state).await;
             if leader.is_some() {
                 debug!(
                     "{} is in the steady state in wave {}",
@@ -193,7 +194,7 @@ impl Committer {
             .flatten()
     }
 
-    fn check_fallback_commit(
+    async fn check_fallback_commit(
         &self,
         certificate: &Certificate,
         wave: Round,
@@ -202,7 +203,7 @@ impl Committer {
         debug!("Checking fallback commit");
         state
             .fallback_leader(wave)
-            .map(|(_, leader)| {
+            .await.map(|(_, leader)| {
                 (state
                     .dag
                     .get(&(certificate.virtual_round() - 1))
@@ -248,7 +249,7 @@ impl Committer {
     }
 
     /// Order the past leaders that we didn't already commit.
-    fn order_leaders(
+    async fn order_leaders(
         &self,
         leader: &Certificate,
         state: &VirtualState,
@@ -293,7 +294,7 @@ impl Committer {
                 },
             );
 
-            let fallback_leader = state.fallback_leader(w / 2).map(|(_, x)| x);
+            let fallback_leader = state.fallback_leader(w / 2).await.map(|(_, x)| x);
             let mut fallback_votes: Stake = fallback_leader.map_or_else(
                 || 0,
                 |leader| {
