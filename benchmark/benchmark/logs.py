@@ -44,9 +44,10 @@ class LogParser:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips = zip(*results)
+        proposals, commits, self.configs, primary_ips, beacons = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
+        self.beacons_per_primary = beacons  # add beacon
 
         # Parse the workers logs.
         try:
@@ -131,8 +132,19 @@ class LogParser:
         }
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
-        
-        return proposals, commits, configs, ip
+        # add beacon
+        beacon_pattern = r'\[(.*Z) .* Beacon output for epoch:(\d+) index:(\d+) is (\d+)'
+        tmp = findall(beacon_pattern, log)
+        beacons = [
+            {
+                'timestamp': self._to_posix(t),
+                'epoch': int(e),
+                'index': int(i),
+                'value': int(v)
+            }
+            for t, e, i, v in tmp
+        ]
+        return proposals, commits, configs, ip, beacons
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:
@@ -187,6 +199,36 @@ class LogParser:
                     latency += [end-start]
         return mean(latency) if latency else 0
 
+    def _beacon_rate_per_primary(self):
+        """calculate beacon rate for each primary"""
+        rates = []
+        for idx, beacons in enumerate(self.beacons_per_primary):
+            if not beacons:
+                rates.append((f'Primary-{idx}', 0))
+                continue
+            timestamps = [b['timestamp'] for b in beacons]
+            duration = max(timestamps) - min(timestamps) if timestamps else 0
+            count = len(beacons)
+            rate = count / duration if duration > 0 else 0
+            rates.append((f'Primary-{idx}', rate))
+        return rates
+
+    def _beacon_errors(self):
+        """calculate beacon equivocations in primaries"""
+        beacon_values = {}
+        for beacons in self.beacons_per_primary:
+            for b in beacons:
+                key = (b['epoch'], b['index'])
+                if key not in beacon_values:
+                    beacon_values[key] = set()
+                beacon_values[key].add(b['value'])
+
+        errors = 0
+        for key, values in beacon_values.items():
+            if len(values) > 1:
+                errors += 1
+        return errors
+
     def result(self):
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
@@ -200,8 +242,11 @@ class LogParser:
         consensus_tps, consensus_bps, _ = self._consensus_throughput()
         end_to_end_tps, end_to_end_bps, duration = self._end_to_end_throughput()
         end_to_end_latency = self._end_to_end_latency() * 1_000
+        # add beacon
+        beacon_rates = self._beacon_rate_per_primary()
+        beacon_errors = self._beacon_errors()
 
-        return (
+        output = (
             '\n'
             '-----------------------------------------\n'
             ' SUMMARY:\n'
@@ -231,8 +276,15 @@ class LogParser:
             f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
             f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
             f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
-            '-----------------------------------------\n'
+            '\n'
+            ' + BEACON RESULTS:\n'
         )
+        for primary_name, rate in beacon_rates:
+            output += f' {primary_name} Beacon Rate: {round(rate):,} beacons/s\n'
+        output += f' Beacon Equivocations: {beacon_errors:,}\n'
+        output += '-----------------------------------------\n'
+
+        return output
 
     def print(self, filename):
         assert isinstance(filename, str)
