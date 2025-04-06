@@ -21,7 +21,7 @@ pub struct InitBFT {
     decided_from_other_receiver: Receiver<DumboMessage>,
 
     cer_to_init_consensus_receiver: Receiver<BreezeCertificate>,
-    init_cc_to_coord_sender: Sender<Vec<BreezeCertificate>>,
+    init_cc_to_coord_sender: Sender<HashSet<BreezeCertificate>>,
     network: ReliableSender,
     cancel_handlers: HashMap<String, Vec<CancelHandler>>,
 }
@@ -32,7 +32,7 @@ impl InitBFT {
         address: SocketAddr,
         committee: Committee,
         cer_to_init_consensus_receiver: Receiver<BreezeCertificate>,
-        init_cc_to_coord_sender: Sender<Vec<BreezeCertificate>>,
+        init_cc_to_coord_sender: Sender<HashSet<BreezeCertificate>>,
     ) {
         let quorum_threshold = committee.authorities_quorum_threshold();
         let fault_tolerance = committee.authorities_fault_tolerance();
@@ -133,7 +133,7 @@ impl InitBFT {
 
                             if !flag{continue}
                             if !init_cc_decided{
-                                let res_to_send: Vec<_> = cc.iter().cloned().collect();
+                                let res_to_send: HashSet<_> = cc.iter().cloned().collect();
                                 self.init_cc_to_coord_sender
                                     .send(res_to_send)
                                     .await
@@ -245,13 +245,13 @@ impl InitBFT {
 
     fn get_decided_message(
         cc_buffer: &HashMap<PublicKey, (BTreeSet<BreezeCertificate>, Signature)>
-    ) -> (Vec<BreezeCertificate>, (BTreeSet<BreezeCertificate>, HashSet<(PublicKey, Signature)>)) {
+    ) -> (HashSet<BreezeCertificate>, (BTreeSet<BreezeCertificate>, HashSet<(PublicKey, Signature)>)) {
 
         let res_to_send = cc_buffer
             .values()
             .next()
-            .map(|(certs, _)| certs.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_else(Vec::new);
+            .map(|(certs, _)| certs.iter().cloned().collect::<HashSet<_>>())
+            .unwrap_or_else(HashSet::new);
         
         let decided_certs = cc_buffer
             .values()

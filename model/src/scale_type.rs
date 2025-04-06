@@ -51,7 +51,27 @@ pub fn get_round_by_epoch_wave(epoch: Epoch, wave: Wave) -> Round {
 
     epoch_base + wave_offset
 }
-// pub(crate) fn is_last_round_in_wave(round: &Round) -> bool {
-//     let max_wave = MAX_WAVE.get().unwrap();
-//     round % max_wave == 0
-// }
+
+
+pub fn dolphin_round_to_epoch_index(round: Round, max_epoch: u64) -> (Epoch, usize) {
+    assert_eq!(round % 2, 1, "round must be an odd number");
+    assert!(round > 0, "round must be positive");
+    assert!(max_epoch > 0, "max_epoch must be positive");
+
+    let rounds_per_epoch = 2 * max_epoch;
+    let epoch = (round - 1) / rounds_per_epoch + 1;
+    let index = ((round - 1) % rounds_per_epoch) / 2 + 1;
+
+    (epoch, index as usize)
+}
+
+pub fn dolphin_epoch_index_to_round(epoch: Epoch, index: usize, max_epoch: u64) -> Round {
+    assert!(epoch > 0, "epoch must be positive");
+    assert!(index > 0 && index <= max_epoch as usize, "index must be between 1 and max_epoch");
+    assert!(max_epoch > 0, "max_epoch must be positive");
+
+    let rounds_per_epoch = 2 * max_epoch;
+    let round = (epoch - 1) * rounds_per_epoch + (2 * index as u64 - 1);
+
+    round
+}

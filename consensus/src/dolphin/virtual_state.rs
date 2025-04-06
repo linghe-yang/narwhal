@@ -67,7 +67,7 @@ impl VirtualState {
             _steady_state: true,
 
             global_coin_recon_req_sender,
-            global_coin_buffer
+            global_coin_buffer:Arc::clone(&global_coin_buffer)
         }
     }
 
