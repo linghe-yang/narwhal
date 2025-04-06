@@ -3,12 +3,11 @@ use bytes::Bytes;
 use config::{Committee, KeyPair};
 use crypto::{Digest, PublicKey, SecretKey, Signature};
 use futures::SinkExt;
-use log::{debug};
 use model::bft_message::{DumboContent, DumboMessage};
 use model::breeze_structs::{BreezeCertificate};
-use network::{MessageHandler, Receiver as NetworkReceiver, ReliableSender, Writer};
+use network::{CancelHandler, MessageHandler, Receiver as NetworkReceiver, ReliableSender, Writer};
 use sha2::{Digest as ShaDigest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
@@ -24,6 +23,7 @@ pub struct InitBFT {
     cer_to_init_consensus_receiver: Receiver<BreezeCertificate>,
     init_cc_to_coord_sender: Sender<Vec<BreezeCertificate>>,
     network: ReliableSender,
+    cancel_handlers: HashMap<String, Vec<CancelHandler>>,
 }
 const CHANNEL_CAPACITY: usize = 1_000;
 impl InitBFT {
@@ -61,6 +61,7 @@ impl InitBFT {
                 cer_to_init_consensus_receiver,
                 init_cc_to_coord_sender,
                 network: ReliableSender::new(),
+                cancel_handlers: HashMap::new(),
             }
             .run(quorum_threshold, fault_tolerance)
             .await;
@@ -72,10 +73,9 @@ impl InitBFT {
         fault_tolerance: usize,
     ) {
         let mut certificate_buffer = HashSet::new();
+        let mut my_cc_has_formed = false;
         let mut cc_buffer = HashMap::new();
         let mut init_cc_decided = false;
-        // let mut my_propose = HashSet::new();
-        // let mut sig_buffer = HashSet::new();
         loop {
             tokio::select! {
                 Some(cer) = self.cer_to_init_consensus_receiver.recv() => {
@@ -83,9 +83,10 @@ impl InitBFT {
                         sender: self.pk,
                         content: DumboContent::Certificate(cer)
                     };
-                    self.broadcaster(message).await;
+                    self.broadcaster(message,"Init".to_string()).await;
                 }
                 Some(message) = self.cer_from_other_receiver.recv() =>{
+                    if my_cc_has_formed { continue; }
                     match message.content {
                         DumboContent::Certificate(cert) => {
                             if cert.verify(quorum_threshold) {
@@ -94,25 +95,9 @@ impl InitBFT {
                         }
                         _ => {}
                     }
-
                 }
-                // Some(message) = self.cc_from_other_receiver.recv() =>{
-                //     let mut flag = true;
-                //     match message.content {
-                //         DumboContent::Propose(ref cc) => {
-                //             for cer in cc.iter(){
-                //                 if !cer.verify(quorum_threshold) {
-                //                     flag = false;
-                //                     break;
-                //                 }
-                //             }
-                //             if !flag{continue}
-                //             cc_buffer.insert(message.sender, cc.clone());
-                //         },
-                //         _ => {}
-                //     }
-                // }
                 Some(message) = self.vote_from_other_receiver.recv() =>{
+                    if init_cc_decided { continue; }
                     let mut flag = true;
                     match message.content {
                         DumboContent::Vote(ref cc) => {
@@ -124,7 +109,6 @@ impl InitBFT {
                             }
                             let digest = Digest(Self::hash_breeze_certificates(&cc.0));
                             if let Err(_) = cc.1.verify(&digest,&message.sender) { flag = false; }
-
                             if !flag{continue}
                             cc_buffer.insert(message.sender, cc.clone());
                         },
@@ -132,6 +116,7 @@ impl InitBFT {
                     }
                 }
                 Some(message) = self.decided_from_other_receiver.recv() =>{
+                    if init_cc_decided { continue; }
                     let mut flag = true;
                     match message.content {
                         DumboContent::Decided((ref cc,ref sigs)) => {
@@ -147,98 +132,72 @@ impl InitBFT {
                             }
 
                             if !flag{continue}
-
                             if !init_cc_decided{
                                 let res_to_send: Vec<_> = cc.iter().cloned().collect();
                                 self.init_cc_to_coord_sender
                                     .send(res_to_send)
                                     .await
                                     .expect("fail to send common core to consensus");
+                                init_cc_decided = true;
+                                self.cancel_handlers.remove(&"Vote".to_string());
                             }
-                            init_cc_decided = true;
+
                         },
                         _ => {}
                     }
-                    self.broadcaster(message).await;
+                    self.broadcaster(message,"Decided".to_string()).await;
                 }
             }
 
             if certificate_buffer.len() >= fault_tolerance + 1 {
+                my_cc_has_formed = true;
+                self.cancel_handlers.remove(&"Init".to_string());
                 let cc_to_propose: HashSet<(PublicKey, BreezeCertificate)> = certificate_buffer
                     .drain()
                     .take(fault_tolerance + 1)
                     .collect();
-                let my_cc: HashSet<_> = cc_to_propose.iter().map(|x| x.1.clone()).collect();
+                let my_cc: BTreeSet<_> = cc_to_propose.iter().map(|x| x.1.clone()).collect();
                 let digest = Digest(Self::hash_breeze_certificates(&my_cc));
                 let sig = Signature::new(&digest, &self.sk);
                 let message = DumboMessage {
                     sender: self.pk,
                     content: DumboContent::Vote((my_cc,sig)),
                 };
-                self.broadcaster(message).await;
+                self.broadcaster(message,"Vote".to_string()).await;
             }
             if cc_buffer.len() >= quorum_threshold {
-                match Self::find_result(&cc_buffer) {
-                    Some(res) => {
-                        let res_to_send: Vec<_> = res.0.iter().cloned().collect();
-                        if !init_cc_decided{
-                            self.init_cc_to_coord_sender
-                                .send(res_to_send)
-                                .await
-                                .expect("fail to send common core to consensus");
-                        }
-                        let temp:HashSet<_> = res.0.iter().cloned().collect();
-                        let sigs = cc_buffer.iter().map(|x| (x.0.clone(),x.1.1.clone())).collect();
-                        let decided = (temp, sigs);
-                        let message = DumboMessage {
-                            sender: self.pk,
-                            content: DumboContent::Decided(decided),
-                        };
-                        self.broadcaster(message).await;
-                        init_cc_decided = true;
-                    }
-                    None => {
-                        let vote = self.find_vote_subset(&cc_buffer, fault_tolerance);
-                        let digest = Digest(Self::hash_breeze_certificates(&vote));
-                        let sig = Signature::new(&digest, &self.sk);
-                        cc_buffer.retain(|_key, (cert_set, _sig)| cert_set == &vote);
-                        let message = DumboMessage {
-                            sender: self.pk,
-                            content: DumboContent::Vote((vote,sig)),
-                        };
-                        self.broadcaster(message).await;
-                    }
+                if Self::find_result(&cc_buffer) && !init_cc_decided{
+                    let (res_to_send, decided) = Self::get_decided_message(&cc_buffer);
+                    if res_to_send.len() == 0 { panic!("init cc is illegal");}
+                    self.init_cc_to_coord_sender
+                        .send(res_to_send)
+                        .await
+                        .expect("fail to send common core to consensus");
+
+                    let message = DumboMessage {
+                        sender: self.pk,
+                        content: DumboContent::Decided(decided),
+                    };
+                    self.broadcaster(message,"Decided".to_string()).await;
+                    init_cc_decided = true;
+                    self.cancel_handlers.remove(&"Vote".to_string());
+                    cc_buffer.clear();
+                }else if !init_cc_decided {
+                    let vote = self.find_vote_subset(&cc_buffer, fault_tolerance);
+                    let digest = Digest(Self::hash_breeze_certificates(&vote));
+                    let sig = Signature::new(&digest, &self.sk);
+                    cc_buffer.retain(|_key, (cert_set, _sig)| cert_set == &vote);
+                    let message = DumboMessage {
+                        sender: self.pk,
+                        content: DumboContent::Vote((vote,sig)),
+                    };
+                    self.broadcaster(message, "Vote".to_string()).await;
                 }
-                // let ccs: Vec<(PublicKey, HashSet<BreezeCertificate>)> = cc_buffer
-                //     .drain()
-                //     .take(quorum_threshold)
-                //     .collect();
-
-
-                // let mut sigs_map_to_addresses: HashMap<SocketAddr, Bytes> = HashMap::new();
-                // for (owner,cc) in ccs {
-                //
-                //     let digest = Digest(Self::hash_breeze_certificates(&cc));
-                //     let sig = Signature::new(&digest,&self.sk);
-                //     let message = DumboMessage{
-                //         sender: self.pk,
-                //         content: DumboContent::Signature(sig)
-                //     };
-                //     let bytes = bincode::serialize(&message).expect("Failed to serialize shares in BreezeShare");
-                //     let address = Self::find_address(&addresses, &owner).unwrap();
-                //     sigs_map_to_addresses.insert(address, Bytes::from(bytes));
-                // }
-                // let handlers = self.network.dispatch_to_addresses(sigs_map_to_addresses).await;
-                // for h in handlers {
-                //     if let Err(_e) = h.await {
-                //         error!("Dispatching of shares was not successful")
-                //     }
-                // }
             }
         }
     }
 
-    async fn broadcaster<T: serde::ser::Serialize>(&mut self, message: T) {
+    async fn broadcaster<T: serde::ser::Serialize>(&mut self, message: T, label: String) {
         let addresses = self
             .committee
             .all_init_bft_addresses()
@@ -248,14 +207,18 @@ impl InitBFT {
         let bytes = bincode::serialize(&message)
             .expect("Failed to serialize shares for reconstruction in BreezeReconstruct");
         let handlers = self.network.broadcast(addresses, Bytes::from(bytes)).await;
-        for h in handlers {
-            if let Err(_e) = h.await {
-                debug!("Broadcast of shares for reconstruction was not successful")
-            }
-        }
+        self.cancel_handlers
+            .entry(label)
+            .or_insert_with(Vec::new)
+            .extend(handlers);
+        // for h in handlers {
+        //     if let Err(_e) = h.await {
+        //         debug!("Broadcast was not successful")
+        //     }
+        // }
     }
 
-    fn hash_breeze_certificates(certs: &HashSet<BreezeCertificate>) -> [u8; 32] {
+    fn hash_breeze_certificates(certs: &BTreeSet<BreezeCertificate>) -> [u8; 32] {
         let mut hasher = Sha256::new();
         let serialized = bincode::serialize(&certs).expect("Failed to serialize certificates");
         hasher.update(&serialized);
@@ -273,24 +236,43 @@ impl InitBFT {
     // }
 
     fn find_result(
-        map: &HashMap<PublicKey, (HashSet<BreezeCertificate>,Signature)>,
-    ) -> Option<(HashSet<BreezeCertificate>,Signature)> {
+        map: &HashMap<PublicKey, (BTreeSet<BreezeCertificate>,Signature)>,
+    ) -> bool {
         let first_set = map.values().next().unwrap().clone();
         let all_same = map.values().all(|set| set.0 == first_set.0);
-        if all_same {
-            let result = first_set;
-            Some(result)
-        } else {
-            None
-        }
+        all_same
+    }
+
+    fn get_decided_message(
+        cc_buffer: &HashMap<PublicKey, (BTreeSet<BreezeCertificate>, Signature)>
+    ) -> (Vec<BreezeCertificate>, (BTreeSet<BreezeCertificate>, HashSet<(PublicKey, Signature)>)) {
+
+        let res_to_send = cc_buffer
+            .values()
+            .next()
+            .map(|(certs, _)| certs.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_else(Vec::new);
+        
+        let decided_certs = cc_buffer
+            .values()
+            .next()
+            .map(|(certs, _)| certs.clone())
+            .unwrap_or_else(BTreeSet::new);
+        
+        let decided_signatures = cc_buffer
+            .into_iter()
+            .map(|(pk, (_, sig))| (pk.clone(), sig.clone()))
+            .collect::<HashSet<(PublicKey, Signature)>>();
+        
+        (res_to_send, (decided_certs, decided_signatures))
     }
     fn find_vote_subset(
         &self,
-        ccs: &HashMap<PublicKey, (HashSet<BreezeCertificate>,Signature)>,
+        ccs: &HashMap<PublicKey, (BTreeSet<BreezeCertificate>,Signature)>,
         fault_tolerance: usize,
-    ) -> HashSet<BreezeCertificate> {
+    ) -> BTreeSet<BreezeCertificate> {
         let target_size = fault_tolerance + 1;
-        let mut certificate_counts: Vec<(HashSet<BreezeCertificate>, usize)> = Vec::new();
+        let mut certificate_counts: Vec<(BTreeSet<BreezeCertificate>, usize)> = Vec::new();
 
         for (_, cert_set) in ccs.iter() {
             if let Some((_existing_set, count)) = certificate_counts
@@ -340,19 +322,19 @@ impl MessageHandler for InitBFTMessageHandler {
                 self.cer_from_other_sender
                     .send(message)
                     .await
-                    .expect("Failed to send secret to breeze validator");
+                    .expect("Failed to send certificate to bft");
             }
             DumboContent::Vote(_) => {
                 self.vote_from_other_sender
                     .send(message)
                     .await
-                    .expect("Failed to send secret to breeze validator");
+                    .expect("Failed to send vote to bft");
             }
             DumboContent::Decided(_) => {
                 self.decided_from_other_sender
                     .send(message)
                     .await
-                    .expect("Failed to send secret to breeze validator");
+                    .expect("Failed to send decision to bft");
             }
         }
         Ok(())

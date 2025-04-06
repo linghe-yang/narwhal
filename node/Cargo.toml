@@ -28,9 +28,8 @@ bavss = { path = "../bavss"}
 bft = { path = "../bft"}
 
 [features]
-benchmark = ["worker/benchmark", "primary/benchmark", "consensus/benchmark"]
+benchmark = ["worker/benchmark", "primary/benchmark", "consensus/benchmark", "bavss/benchmark"]
 dolphin = ["consensus/dolphin", "config/dolphin"]
-#breeze_share_test = ["bavss/breeze_origin"]
 [[bin]]         
 name = "benchmark_client"   
 path = "src/benchmark_client.rs" 

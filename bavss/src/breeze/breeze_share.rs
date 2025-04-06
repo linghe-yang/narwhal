@@ -9,7 +9,7 @@ use config::Committee;
 use crypto::{Digest, PublicKey};
 use model::breeze_structs::{BreezeMessage, CommonReferenceString};
 use model::scale_type::{Epoch, Id, BEACON_PER_EPOCH, MAX_EPOCH};
-use network::ReliableSender;
+use network::{CancelHandler, ReliableSender};
 use crate::breeze::breeze_share_dealer::Shares;
 
 pub struct BreezeShare{
@@ -18,7 +18,8 @@ pub struct BreezeShare{
     breeze_share_cmd_receiver: Receiver<Epoch>,
     network: ReliableSender,
     common_reference_string: Arc<RwLock<CommonReferenceString>>,
-    my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>
+    my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>,
+    cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
 }
 
 impl BreezeShare {
@@ -37,7 +38,8 @@ impl BreezeShare {
                 breeze_share_cmd_receiver,
                 network,
                 common_reference_string,
-                my_dealer_shares
+                my_dealer_shares,
+                cancel_handlers: HashMap::new(),
             }
             .run()
             .await;
@@ -74,11 +76,16 @@ impl BreezeShare {
                     my_dealer_shares.insert(epoch,c);
                     
                     let handlers = self.network.dispatch_to_addresses(share_map_to_addresses).await;
-                    for h in handlers {
-                        if let Err(_e) = h.await {
-                            error!("Dispatching of shares was not successful")
-                        }
-                    }
+                    self.cancel_handlers
+                        .entry(epoch)
+                        .or_insert_with(Vec::new)
+                        .extend(handlers);
+                    // self.cancel_handlers.retain(|e, _| e >= &epoch);
+                    // for h in handlers {
+                    //     if let Err(_e) = h.await {
+                    //         error!("Dispatching of shares was not successful")
+                    //     }
+                    // }
                 }
             }
         }

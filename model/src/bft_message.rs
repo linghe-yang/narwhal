@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use serde::{Deserialize, Serialize};
 use crypto::{PublicKey, Signature};
 use crate::breeze_structs::BreezeCertificate;
@@ -11,6 +11,6 @@ pub struct DumboMessage{
 pub enum DumboContent {
     Certificate(BreezeCertificate),
     // Propose(HashSet<BreezeCertificate>),
-    Vote((HashSet<BreezeCertificate>,Signature)),
-    Decided((HashSet<BreezeCertificate>,HashSet<(PublicKey,Signature)>)),
+    Vote((BTreeSet<BreezeCertificate>,Signature)),
+    Decided((BTreeSet<BreezeCertificate>,HashSet<(PublicKey,Signature)>)),
 }

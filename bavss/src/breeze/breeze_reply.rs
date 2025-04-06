@@ -1,14 +1,14 @@
-
+use std::collections::HashMap;
 use bytes::Bytes;
 use log::{error, info};
-use network::ReliableSender;
+use network::{CancelHandler, ReliableSender};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{PublicKey, SecretKey, Signature};
 use model::breeze_structs::{BreezeContent, BreezeMessage, CommonReferenceString};
-use model::scale_type::Id;
+use model::scale_type::{Epoch, Id};
 use crate::breeze::breeze_share_dealer::Shares;
 
 pub struct BreezeReply {
@@ -19,6 +19,7 @@ pub struct BreezeReply {
     network: ReliableSender,
     my_shares: Arc<RwLock<Vec<BreezeMessage>>>,
     common_reference_string: Arc<RwLock<CommonReferenceString>>,
+    cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
 }
 
 impl BreezeReply {
@@ -40,6 +41,8 @@ impl BreezeReply {
                 network,
                 my_shares,
                 common_reference_string,
+
+                cancel_handlers: HashMap::new(),
             }
             .run()
             .await;
@@ -109,9 +112,14 @@ impl BreezeReply {
                         .breeze_address(&dealer)
                         .unwrap();
                     let handler = self.network.send(address, Bytes::from(bytes)).await;
-                    if let Err(e) = handler.await {
-                        error!("Reply was not successful: {:?}", e);
-                    }
+
+                    self.cancel_handlers
+                        .entry(this_epoch)
+                        .or_insert_with(Vec::new)
+                        .push(handler);
+                    // if let Err(e) = handler.await {
+                    //     error!("Reply was not successful: {:?}", e);
+                    // }
                 }
             }
         }

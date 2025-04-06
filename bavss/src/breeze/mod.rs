@@ -31,8 +31,10 @@ mod crs {
     use model::breeze_structs::CommonReferenceString;
 
     pub fn load_crs() -> std::io::Result<CommonReferenceString> {
+        #[cfg(feature = "benchmark")]
+        let path = Path::new("./crs.json");
+        #[cfg(not(feature = "benchmark"))]
         let path = Path::new("bavss/src/breeze/crs.json");
-
         let mut file = File::open(path)?;
 
         let mut contents = String::new();

@@ -40,7 +40,7 @@ pub struct WitnessBreeze {
     pub poly_commit: RistrettoPoint,
     pub merkle_branch: (usize, Vec<u8>)
 }
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct BreezeCertificate {
     pub c: Digest,
     pub epoch: Epoch,

@@ -1,7 +1,7 @@
 use crate::error::DrbError;
 use config::Committee;
 use model::breeze_structs::{BreezeCertificate, BreezeReconRequest};
-use model::scale_type::{get_epoch_by_round, get_epoch_by_wave, get_round_by_epoch_wave, get_wave_by_round, Epoch, RandomNum, Round, Wave, BEACON_PER_EPOCH, MAX_EPOCH, MAX_WAVE};
+use model::scale_type::{get_epoch_by_wave, Epoch, RandomNum, Round, Wave, BEACON_PER_EPOCH, MAX_EPOCH, MAX_WAVE};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -97,7 +97,6 @@ impl Coordinator {
                     }
                 }
                 Some(cc) = self.cc_decided_from_init_consensus.recv()=>{
-                    println!("I have init");
                     self.certificate_buffer.insert(0, cc);
                     self.decided_common_core.insert(0);
                 }

@@ -144,7 +144,7 @@ impl VirtualState {
         // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
         // compute the coin). We currently just use round-robin.
 
-
+        println!("wave: {} is electing leader", wave);
         #[cfg(test)]
         let coin = 0;
         #[cfg(not(test))]
