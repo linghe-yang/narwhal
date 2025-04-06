@@ -11,6 +11,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use model::types_and_const::CHANNEL_CAPACITY;
 
 pub struct InitBFT {
     pk: PublicKey,
@@ -25,7 +26,6 @@ pub struct InitBFT {
     network: ReliableSender,
     cancel_handlers: HashMap<String, Vec<CancelHandler>>,
 }
-const CHANNEL_CAPACITY: usize = 1_000;
 impl InitBFT {
     pub async fn spawn(
         key_pair: KeyPair,
@@ -322,19 +322,19 @@ impl MessageHandler for InitBFTMessageHandler {
                 self.cer_from_other_sender
                     .send(message)
                     .await
-                    .expect("Failed to send certificate to bft");
+                    .expect("Failed to send certificate to secondary_bft");
             }
             DumboContent::Vote(_) => {
                 self.vote_from_other_sender
                     .send(message)
                     .await
-                    .expect("Failed to send vote to bft");
+                    .expect("Failed to send vote to secondary_bft");
             }
             DumboContent::Decided(_) => {
                 self.decided_from_other_sender
                     .send(message)
                     .await
-                    .expect("Failed to send decision to bft");
+                    .expect("Failed to send decision to secondary_bft");
             }
         }
         Ok(())

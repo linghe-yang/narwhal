@@ -6,7 +6,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use crypto::PublicKey;
 use model::breeze_structs::{CommonReferenceString, Share, WitnessBreeze};
-use model::scale_type::{Epoch, Id};
+use model::types_and_const::{Epoch, Id};
 use crate::breeze::batch_eval::{batch_eval, batch_verify_eval};
 use crate::breeze::merkletree::{generate_merkle_tree, verify_merkle_proof};
 use crate::breeze::utils::transpose;

@@ -2,7 +2,6 @@ use std::error::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::SinkExt;
-use log::info;
 use tokio::sync::mpsc::{Sender};
 use model::breeze_structs::{BreezeContent, BreezeMessage};
 use network::{MessageHandler, Writer};

@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{PublicKey, SecretKey, Signature};
 use model::breeze_structs::{BreezeContent, BreezeMessage, CommonReferenceString};
-use model::scale_type::{Epoch, Id};
+use model::types_and_const::{Epoch, Id};
 use crate::breeze::breeze_share_dealer::Shares;
 
 pub struct BreezeReply {
@@ -100,7 +100,7 @@ impl BreezeReply {
                         // 执行插入
                         my_shares.push(message);
                     } // 写锁在这里释放
-
+                    
                     // 回复dealer
                     let reply = BreezeMessage::new_reply_message(dealer, self.node_id.0, my_share.c, signature, this_epoch);
                     let bytes = bincode::serialize(&reply)

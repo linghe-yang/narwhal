@@ -13,10 +13,9 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
 use config::{Committee, KeyPair};
 use model::breeze_structs::{BreezeCertificate, BreezeMessage, BreezeReconRequest, CommonReferenceString};
-use model::scale_type::{Epoch, Id, RandomNum};
+use model::types_and_const::{Epoch, Id, RandomNum, CHANNEL_CAPACITY};
 use crypto::{Digest};
 
-pub const DEFAULT_CHANNEL_CAPACITY: usize = 1000;
 pub struct Breeze;
 
 impl Breeze {
@@ -36,15 +35,15 @@ impl Breeze {
         let pk = keypair.name;
         let sk = keypair.secret;
         let node_id = (pk,id);
-        let committee = Arc::new(RwLock::new(committee));
+        
         let (breeze_share_sender, breeze_share_receiver) =
-            channel::<BreezeMessage>(DEFAULT_CHANNEL_CAPACITY);
+            channel::<BreezeMessage>(CHANNEL_CAPACITY);
         let (breeze_confirm_sender, breeze_confirm_receiver) =
-            channel::<BreezeMessage>(DEFAULT_CHANNEL_CAPACITY);
+            channel::<BreezeMessage>(CHANNEL_CAPACITY);
         let (breeze_out_sender, _breeze_out_receiver) =
-            channel::<BreezeMessage>(DEFAULT_CHANNEL_CAPACITY);
+            channel::<BreezeMessage>(CHANNEL_CAPACITY);
         let (breeze_reconstruct_secret_sender, breeze_reconstruct_secret_receiver) =
-            channel::<BreezeMessage>(DEFAULT_CHANNEL_CAPACITY);
+            channel::<BreezeMessage>(CHANNEL_CAPACITY);
         
         
         let my_shares =Arc::new(RwLock::new(Vec::new()));
@@ -63,23 +62,27 @@ impl Breeze {
         );
 
         let (breeze_recon_certificate_sender, breeze_recon_certificate_receiver) =
-            channel::<(HashSet<Digest>,Epoch, usize)>(DEFAULT_CHANNEL_CAPACITY);
+            channel::<(HashSet<Digest>,Epoch, usize)>(CHANNEL_CAPACITY);
         //lagrange interpolation to get result
         BreezeResult::spawn(
-            Arc::clone(&committee),
+            // Arc::clone(&committee),
+            committee.clone(),
             breeze_recon_certificate_receiver,
             breeze_reconstruct_secret_receiver,
             breeze_result_sender
         );
+
         //reconstruct phase
         BreezeReconstruct::spawn(
             node_id,
-            Arc::clone(&committee),
+            // Arc::clone(&committee),
+            committee.clone(),
             breeze_reconstruct_cmd_receiver,
             breeze_recon_certificate_sender,
             ReliableSender::new(),
             Arc::clone(&my_shares)
         );
+        let committee = Arc::new(RwLock::new(committee));
         //confirm phase
         BreezeConfirm::spawn(
             node_id,

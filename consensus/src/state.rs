@@ -4,7 +4,7 @@ use log::debug;
 use primary::{Certificate};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
-use model::scale_type::Round;
+use model::types_and_const::Round;
 
 /// The representation of the DAG in memory.
 pub type Dag = HashMap<Round, HashMap<PublicKey, (Digest, Certificate)>>;

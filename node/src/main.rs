@@ -9,21 +9,19 @@ use config::{Committee, KeyPair, Parameters};
 use consensus::Tusk;
 use drb_coordinator::coordinator::Coordinator;
 use env_logger::Env;
-use model::scale_type::{WorkerId, BEACON_PER_EPOCH, MAX_EPOCH, MAX_WAVE};
+use model::types_and_const::{WorkerId, BEACON_PER_EPOCH, CHANNEL_CAPACITY, MAX_EPOCH, MAX_WAVE};
 use primary::{Certificate, Primary};
 use std::sync::Arc;
-use log::info;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
-use bft::init_bft::InitBFT;
+use secondary_bft::init_bft::InitBFT;
 #[cfg(feature = "dolphin")]
 use consensus::Dolphin;
+use drb_coordinator::beacon_hub::BeaconHub;
 use model::breeze_structs::BreezeCertificate;
 use worker::Worker;
 
-/// The default channel capacity.
-pub const CHANNEL_CAPACITY: usize = 1_000;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -108,10 +106,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     match matches.subcommand() {
         // Spawn the primary and consensus core.
         ("primary", _) => {
-            info!("primary running");
-            BEACON_PER_EPOCH.set(20).unwrap();
+            BEACON_PER_EPOCH.set(200).unwrap();
             MAX_WAVE.set(4).unwrap();
-            MAX_EPOCH.set(20).unwrap();
+            MAX_EPOCH.set(30).unwrap();
             let (breeze_share_cmd_sender, breeze_share_cmd_receiver) =
                 channel(CHANNEL_CAPACITY);
             let (breeze_certificate_sender, breeze_certificate_receiver) =
@@ -120,12 +117,11 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 channel(CHANNEL_CAPACITY);
             let (cer_to_init_consensus_sender, cer_to_init_consensus_receiver) =
                 channel(CHANNEL_CAPACITY);
-
             let (init_cc_to_coord_sender, init_cc_to_coord_receiver) =
                 channel(CHANNEL_CAPACITY);
             let (global_coin_recon_req_sender, global_coin_recon_req_receiver) =
                 channel(CHANNEL_CAPACITY);
-            let (_beacon_recon_req_sender, beacon_recon_req_receiver) =
+            let (beacon_recon_req_sender, beacon_recon_req_receiver) =
                 channel(CHANNEL_CAPACITY);
             let (breeze_reconstruct_cmd_sender, breeze_reconstruct_cmd_receiver) =
                 channel(CHANNEL_CAPACITY);
@@ -133,12 +129,11 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 channel(CHANNEL_CAPACITY);
             let (global_coin_res_sender, global_coin_res_receiver) =
                 channel(CHANNEL_CAPACITY);
-            let (beacon_res_sender, _beacon_res_receiver) =
+            let (beacon_res_sender, beacon_res_receiver) =
                 channel(CHANNEL_CAPACITY);
 
             // generate_crs_file(&committee);
             let crs = Arc::new(RwLock::new(bavss::load_crs()?));
-            println!("crs get");
             let mut address = committee.breeze_address(&keypair.name)?;
             address.set_ip("0.0.0.0".parse()?);
             let id = committee.get_id(&keypair.name).unwrap();
@@ -221,6 +216,10 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             
                 cer_to_consensus_receiver,
             );
+            BeaconHub::spawn(
+                beacon_recon_req_sender,
+                beacon_res_receiver
+            );
         }
 
         // Spawn a single worker.
@@ -245,8 +244,6 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
 /// Receives an ordered list of certificates and apply any application-specific logic.
 async fn analyze(mut rx_output: Receiver<Certificate>, cer_to_coord_sender: Sender<BreezeCertificate>) {
     while let Some(certificate) = rx_output.recv().await {
-        // println!("ordered vertex recv");
-        // send breeze_certificate which has been a_delivered to drb.
         if let Some(cer) = certificate.header.breeze_cer{
             cer_to_coord_sender.send(cer).await.unwrap();
         }

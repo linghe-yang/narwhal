@@ -5,7 +5,7 @@ use config::{Committee};
 use log::{debug, log_enabled};
 use primary::{Certificate};
 use std::collections::HashSet;
-use model::scale_type::{Round, Stake};
+use model::types_and_const::{Round, Stake};
 
 pub struct Committer {
     /// The committee information.

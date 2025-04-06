@@ -1,19 +1,18 @@
 use curve25519_dalek::scalar::Scalar;
-use model::scale_type::{Epoch, Id, RandomNum};
+use model::types_and_const::{Id, RandomNum};
 
-#[derive(Debug, Clone)]
 pub struct BreezeReconResult{
     pub value: Scalar,
-    pub epoch: Epoch,
-    pub index: usize,
+    // pub epoch: Epoch,
+    // pub index: usize,
 }
 
 impl BreezeReconResult {
-    pub fn new(epoch: Epoch, index: usize, output: Scalar ) -> Self {
+    pub fn new(output: Scalar ) -> Self {
         BreezeReconResult{
             value: output,
-            epoch,
-            index
+            // epoch,
+            // index
         }
     }
     

@@ -5,7 +5,7 @@ use config::{Committee};
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, Signature};
 use std::collections::HashSet;
-use model::scale_type::Stake;
+use model::types_and_const::Stake;
 
 /// Aggregates votes for a particular header into a certificate.
 pub struct VotesAggregator {

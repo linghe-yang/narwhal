@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
-use model::scale_type::Round;
+use model::types_and_const::Round;
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]

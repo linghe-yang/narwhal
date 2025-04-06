@@ -2,17 +2,16 @@
 use curve25519_dalek::Scalar;
 use log::{info};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::breeze_structs::{BreezeContent, BreezeMessage, ReconstructShare, SingleShare};
-use model::scale_type::{Epoch, RandomNum};
+use model::breeze_structs::{BreezeContent, BreezeMessage};
+use model::types_and_const::{Epoch, RandomNum};
 use crate::breeze::breeze_reconstruct_dealer::BreezeReconResult;
 
 pub struct BreezeResult {
-    committee: Arc<RwLock<Committee>>,
+    // committee: Arc<RwLock<Committee>>,
+    committee: Committee,
     breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
     breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
     breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
@@ -24,7 +23,8 @@ pub struct BreezeResult {
 
 impl BreezeResult {
     pub fn spawn(
-        committee: Arc<RwLock<Committee>>,
+        // committee: Arc<RwLock<Committee>>,
+        committee: Committee,
         breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
         breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
         breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
@@ -46,6 +46,7 @@ impl BreezeResult {
 
     pub async fn run(&mut self) {
         info!("Breeze result start to listen");
+        let threshold = self.committee.authorities_fault_tolerance() + 1;
         loop {
             tokio::select! {
                 Some(certificates_to_reconstruct) = self.breeze_recon_certificate_receiver.recv() => {
@@ -60,7 +61,6 @@ impl BreezeResult {
                 Some(shares_from_others) = self.breeze_reconstruct_secret_receiver.recv() => {
                     match shares_from_others.content {
                         BreezeContent::Reconstruct(share) => {
-                            // warn!("Reconstructed share received from {}: {:?}", shares_from_others.sender_id,share);
                             let key = (share.epoch, share.index);
                             // for secret in share.secrets{
                             //
@@ -87,8 +87,8 @@ impl BreezeResult {
                 }
             }
 
-            let committee = self.committee.read().await;
-            let threshold = committee.authorities_fault_tolerance() + 1;
+            // let committee = self.committee.read().await;
+            // let threshold = committee.authorities_fault_tolerance() + 1;
 
             let mut secrets_to_reconstruct = Vec::new();
             self.certificates_to_reconstruct_buffer.retain(|(digests, epoch, index)| {
@@ -103,34 +103,14 @@ impl BreezeResult {
                             digest_can_be_reconstructed.insert(*c);
                         }
                     }
-                    if &digest_can_be_reconstructed == digests{
+                    return if &digest_can_be_reconstructed == digests {
                         secrets_to_reconstruct.push((*epoch, *index, secret_can_be_reconstructed));
                         self.reconstructed_epoch_wave.push(key);
                         self.shares_to_cumulate.remove(&key);
-                        return false;
-                    }else {
-                        return true;
+                        false
+                    } else {
+                        true
                     }
-                    // if shares.len() >= threshold {
-                    //     let cumulated_secrets: Vec<_> = shares.iter()
-                    //         .filter_map(|(pk, share)| {
-                    //             let digest_in_share: HashSet<_> = share.secrets.iter().map(|ss| ss.c).collect();
-                    //             if &digest_in_share != digests {
-                    //                 return None;
-                    //             }
-                    //             let cumulated_secret = share.secrets.iter()
-                    //                 .fold(Scalar::ZERO, |acc, ss| acc + ss.y);
-                    //             Some((pk.clone(), cumulated_secret))
-                    //         })
-                    //         .collect();
-                    //
-                    //     if !cumulated_secrets.is_empty() {
-                    //         secrets_to_reconstruct.push((*epoch, *index, cumulated_secrets));
-                    //         self.reconstructed_epoch_wave.push(key);
-                    //         self.shares_to_cumulate.remove(&key);
-                    //         return false;
-                    //     }
-                    // }
                 }
                 true
             });
@@ -141,25 +121,18 @@ impl BreezeResult {
                     let mut ids = Vec::new();
                     let mut values = Vec::new();
                     for (pk,value) in shares{
-                        let id = committee.get_id(&pk).unwrap();
+                        // let id = committee.get_id(&pk).unwrap();
+                        let id = self.committee.get_id(&pk).unwrap();
                         ids.push(id);
                         values.push(value);
                     }
                     cumulated_output += BreezeReconResult::interpolate(&ids, &values);
                 }
-                let recon_output = BreezeReconResult::new(epoch, index, cumulated_output);
-                // let secrets: Vec<Scalar> = secret_set.iter().map(|(_, s)| s.clone()).collect();
-                // let pks: Vec<PublicKey> = secret_set.iter().map(|(pk, _)| *pk).collect();
-                // let ids: Vec<_> = pks.iter()
-                //     .map(|pk| committee.get_id(pk).unwrap())
-                //     .collect();
-
-                // let recon_output = BreezeReconResult::new(epoch, index, &ids, &secrets);
+                let recon_output = BreezeReconResult::new(cumulated_output);
                 self.breeze_result_sender.send((epoch, index, recon_output.scalar_to_random()))
                     .await
                     .expect("breeze_result_sender error to send");
             }
-
 
 
 

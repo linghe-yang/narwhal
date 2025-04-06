@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use bytes::Bytes;
-use log::{error, info};
+use log::{info};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
 use model::breeze_structs::{BreezeMessage, CommonReferenceString};
-use model::scale_type::{Epoch, Id, BEACON_PER_EPOCH, MAX_EPOCH};
+use model::types_and_const::{Epoch, Id, BEACON_PER_EPOCH, MAX_EPOCH};
 use network::{CancelHandler, ReliableSender};
 use crate::breeze::breeze_share_dealer::Shares;
 
@@ -71,10 +71,8 @@ impl BreezeShare {
                             share_map_to_addresses.insert(address, Bytes::from(bytes));
                         }
                     }
-                    
                     let mut my_dealer_shares = self.my_dealer_shares.write().await;
                     my_dealer_shares.insert(epoch,c);
-                    
                     let handlers = self.network.dispatch_to_addresses(share_map_to_addresses).await;
                     self.cancel_handlers
                         .entry(epoch)

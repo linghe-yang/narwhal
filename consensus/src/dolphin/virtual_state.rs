@@ -10,7 +10,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use drb_coordinator::error::DrbError;
-use model::scale_type::{RandomNum, Round};
+use model::types_and_const::{RandomNum, Round};
 
 /// The virtual consensus state. This state is interpreted from metadata included in the certificates
 /// and can be derived from the real state (`State`).
@@ -145,12 +145,12 @@ impl VirtualState {
         // compute the coin). We currently just use round-robin.
 
         println!("wave: {} is electing leader", wave);
-        #[cfg(test)]
-        let coin = 0;
-        #[cfg(not(test))]
-        let coin = wave;
+        // #[cfg(test)]
+        // let coin = 0;
+        // #[cfg(not(test))]
+        // let coin = wave;
 
-        let mut coin = 0;
+        let coin;
         self.global_coin_recon_req_sender.send(wave).await.unwrap();
         loop {
             match self.global_coin_buffer.read().await.get(&wave) {

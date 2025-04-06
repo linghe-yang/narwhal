@@ -5,7 +5,7 @@ use crypto::Digest;
 use log::{debug, info, log_enabled, warn};
 use primary::{Certificate};
 use tokio::sync::mpsc::{Receiver, Sender};
-use model::scale_type::{Round, Stake};
+use model::types_and_const::{Round, Stake};
 
 #[cfg(test)]
 #[path = "tests/tusk_tests.rs"]

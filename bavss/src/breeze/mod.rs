@@ -14,8 +14,11 @@ mod breeze_reconstruct_dealer;
 
 // #[cfg(feature = "breeze_origin")]
 pub use crs::{generate_crs_file,load_crs};
+#[cfg(test)]
 pub(crate) use breeze_share_dealer::Shares;
+#[cfg(test)]
 pub(crate) use crs::generate_crs;
+#[cfg(test)]
 pub(crate) use merkletree::verify_merkle_proof;
 
 // #[cfg(feature = "breeze_origin")]
@@ -23,8 +26,7 @@ mod crs {
     use std::fs::File;
     use std::io::{Read, Write};
     use std::path::Path;
-    use config::{Committee, Import};
-    use anyhow::{Context};
+    use config::{Committee};
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
     use curve25519_dalek::Scalar;
     use rand::rngs::OsRng;

@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
 use model::breeze_structs::{BreezeCertificate, BreezeContent, BreezeMessage};
-use model::scale_type::{Epoch, Id};
+use model::types_and_const::{Epoch, Id};
 
 pub struct BreezeConfirm {
     node_id: (PublicKey,Id),
@@ -82,8 +82,8 @@ impl BreezeConfirm {
                                             if let Err(_) = self.breeze_certificate_sender.send(cert.clone()).await {
                                                 error!("fail to send certificate to BFT-SMR")
                                             }
-                                            let mut my_dealer_shares_write = self.my_dealer_shares.write().await;
-                                            my_dealer_shares_write.remove(&epoch);
+                                            // let mut my_dealer_shares_write = self.my_dealer_shares.write().await;
+                                            // my_dealer_shares_write.remove(&epoch);
                                             // keys_to_remove.push(e);
                                             delivered_certificates.push(epoch.clone());
                                             certificates.retain(|&e, _| e > epoch);

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use model::scale_type::Round;
+use model::types_and_const::Round;
 
 /// Waits to receive all the ancestors of a certificate before looping it back to the `Core`
 /// for further processing.

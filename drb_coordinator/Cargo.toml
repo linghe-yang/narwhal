@@ -5,10 +5,11 @@ edition = "2021"
 
 
 [dependencies]
-tokio = { version = "1.5.0", features = ["sync", "rt", "macros"] }
+tokio = { version = "1.5.0", features = ["sync", "rt", "macros", "time"] }
 
 model = { path = "../model"}
 config = { path = "../config"}
 thiserror = "2.0.12"
+log = "0.4.27"
 [features]
 drb = []

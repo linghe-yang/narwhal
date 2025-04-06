@@ -6,7 +6,7 @@ use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver, Sender};
-use model::scale_type::Stake;
+use model::types_and_const::Stake;
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]

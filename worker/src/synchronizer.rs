@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use store::{Store, StoreError};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
-use model::scale_type::WorkerId;
+use model::types_and_const::WorkerId;
 
 #[cfg(test)]
 #[path = "tests/synchronizer_tests.rs"]

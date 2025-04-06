@@ -2,7 +2,7 @@
 use crypto::{CryptoError, Digest, PublicKey};
 use store::StoreError;
 use thiserror::Error;
-use model::scale_type::Round;
+use model::types_and_const::Round;
 
 #[macro_export]
 macro_rules! bail {

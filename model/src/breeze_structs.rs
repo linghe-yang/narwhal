@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 use curve25519_dalek::{RistrettoPoint, Scalar};
 use serde::{Deserialize, Serialize};
 use crypto::{Digest, PublicKey, Signature};
-use crate::scale_type::{Epoch};
+use crate::types_and_const::{Epoch};
 
 #[derive(Debug, Clone,Serialize,Deserialize)]
 pub struct CommonReferenceString {

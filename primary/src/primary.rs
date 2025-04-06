@@ -23,10 +23,8 @@ use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use model::breeze_structs::BreezeCertificate;
-use model::scale_type::{Round, WorkerId};
+use model::types_and_const::{Round, WorkerId, CHANNEL_CAPACITY};
 
-/// The default channel capacity for each channel of the primary.
-pub const CHANNEL_CAPACITY: usize = 1_000;
 
 /// The round number.
 

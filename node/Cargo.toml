@@ -25,7 +25,7 @@ consensus = { path = "../consensus" }
 model = { path = "../model" }
 drb_coordinator = { path = "../drb_coordinator"}
 bavss = { path = "../bavss"}
-bft = { path = "../bft"}
+secondary_bft = { path = "../secondary_bft" }
 
 [features]
 benchmark = ["worker/benchmark", "primary/benchmark", "consensus/benchmark", "bavss/benchmark"]

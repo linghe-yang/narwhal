@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
 use drb_coordinator::error::DrbError;
-use model::scale_type::{RandomNum, Round, Stake};
+use model::types_and_const::{RandomNum, Round, Stake};
 
 pub struct Dolphin {
     /// The committee information.

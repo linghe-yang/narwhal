@@ -7,7 +7,7 @@ use primary::WorkerPrimaryMessage;
 use std::convert::TryInto;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
-use model::scale_type::WorkerId;
+use model::types_and_const::WorkerId;
 
 #[cfg(test)]
 #[path = "tests/processor_tests.rs"]

@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
 use model::breeze_structs::BreezeCertificate;
-use model::scale_type::{Round, WorkerId};
+use model::types_and_const::{Round, WorkerId};
 
 #[cfg(test)]
 #[path = "tests/proposer_tests.rs"]

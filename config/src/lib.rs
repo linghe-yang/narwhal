@@ -9,7 +9,7 @@ use std::io::BufWriter;
 use std::io::Write as _;
 use std::net::SocketAddr;
 use thiserror::Error;
-use model::scale_type::{Id, Stake, WorkerId};
+use model::types_and_const::{Id, Stake, WorkerId};
 
 #[derive(Error, Debug)]
 pub enum ConfigError {

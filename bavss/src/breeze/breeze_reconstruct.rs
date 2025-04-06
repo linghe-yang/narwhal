@@ -1,28 +1,31 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use bytes::Bytes;
-use log::{error, info};
-use network::ReliableSender;
+use log::{info};
+use network::{CancelHandler, ReliableSender};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
 use model::breeze_structs::{BreezeContent, BreezeMessage, BreezeReconRequest, ReconstructShare, SingleShare};
-use model::scale_type::{Epoch, Id};
+use model::types_and_const::{Epoch, Id};
 
 pub struct BreezeReconstruct {
     node_id: (PublicKey,Id),
-    committee: Arc<RwLock<Committee>>,
+    committee: Committee,
+    // committee: Arc<RwLock<Committee>>,
     breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
     breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
     network: ReliableSender,
     my_shares: Arc<RwLock<Vec<BreezeMessage>>>,
+    cancel_handlers: HashMap<(Epoch, usize), Vec<CancelHandler>>,
 }
 
 impl BreezeReconstruct {
     pub fn spawn(
         node_id: (PublicKey,Id),
-        committee: Arc<RwLock<Committee>>,
+        committee: Committee,
+        // committee: Arc<RwLock<Committee>>,
         breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
         breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
         network: ReliableSender,
@@ -36,6 +39,7 @@ impl BreezeReconstruct {
                 breeze_recon_certificate_sender,
                 network,
                 my_shares,
+                cancel_handlers: HashMap::new(),
             }
             .run()
             .await;
@@ -100,17 +104,21 @@ impl BreezeReconstruct {
                         self.node_id.0,
                         ReconstructShare::new(my_secrets_to_broadcast, message.epoch, message.index),
                     );
-                    let addresses = self.committee.read().await.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
-
+                    // let addresses = self.committee.read().await.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
+                    let addresses = self.committee.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
                     let bytes = bincode::serialize(&reconstruct_message).expect(
                         "Failed to serialize shares for reconstruction in BreezeReconstruct",
                     );
                     let handlers = self.network.broadcast(addresses, Bytes::from(bytes)).await;
-                    for h in handlers {
-                        if let Err(_e) = h.await {
-                            error!("Broadcast of shares for reconstruction was not successful")
-                        }
-                    }
+                    self.cancel_handlers
+                        .entry((message.epoch, message.index))
+                        .or_insert_with(Vec::new)
+                        .extend(handlers);
+                    // for h in handlers {
+                    //     if let Err(_e) = h.await {
+                    //         error!("Broadcast of shares for reconstruction was not successful")
+                    //     }
+                    // }
                 }
             }
         }

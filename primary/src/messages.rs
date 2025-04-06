@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::fmt;
 use model::breeze_structs::BreezeCertificate;
-use model::scale_type::{Round, WorkerId};
+use model::types_and_const::{Round, WorkerId};
 // TODO: Make metadata generic.
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
