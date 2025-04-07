@@ -1,9 +1,10 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
+
 use anyhow::{Context, Result};
 use bavss::Breeze;
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
-use config::Export as _;
-use config::Import as _;
+use model::file_io::Export;
+use model::file_io::Import;
 use config::{Committee, KeyPair, Parameters};
 #[cfg(not(feature = "dolphin"))]
 use consensus::Tusk;
@@ -19,7 +20,7 @@ use secondary_bft::init_bft::InitBFT;
 #[cfg(feature = "dolphin")]
 use consensus::Dolphin;
 use drb_coordinator::beacon_hub::BeaconHub;
-use model::breeze_structs::BreezeCertificate;
+use model::breeze_structs::{BreezeCertificate, CommonReferenceString};
 use worker::Worker;
 
 
@@ -41,7 +42,10 @@ async fn main() -> Result<()> {
                 .args_from_usage("--committee=<FILE> 'The file containing committee information'")
                 .args_from_usage("--parameters=[FILE] 'The file containing the node parameters'")
                 .args_from_usage("--store=<PATH> 'The path where to create the data store'")
-                .subcommand(SubCommand::with_name("primary").about("Run a single primary"))
+                .subcommand(
+                    SubCommand::with_name("primary")
+                    .about("Run a single primary")
+                    .args_from_usage("--crs=<FILE> 'The common reference string of breeze'"))
                 .subcommand(
                     SubCommand::with_name("worker")
                         .about("Run a single worker")
@@ -105,7 +109,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     // Check whether to run a primary, a worker, or an entire authority.
     match matches.subcommand() {
         // Spawn the primary and consensus core.
-        ("primary", _) => {
+        ("primary", Some(sub_matches)) => {
             BEACON_PER_EPOCH.set(200).unwrap();
             MAX_WAVE.set(4).unwrap();
             MAX_EPOCH.set(30).unwrap();
@@ -132,8 +136,11 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             let (beacon_res_sender, beacon_res_receiver) =
                 channel(CHANNEL_CAPACITY);
 
-            // generate_crs_file(&committee);
-            let crs = Arc::new(RwLock::new(bavss::load_crs()?));
+            let crs_file = sub_matches.value_of("crs").unwrap();
+            let crs =
+                CommonReferenceString::import(crs_file).context("Failed to load the crs for breeze")?;
+
+            let crs = Arc::new(RwLock::new(crs));
             let mut address = committee.breeze_address(&keypair.name)?;
             address.set_ip("0.0.0.0".parse()?);
             let id = committee.get_id(&keypair.name).unwrap();

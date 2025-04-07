@@ -24,6 +24,10 @@ class PathMaker:
         return '.committee.json'
 
     @staticmethod
+    def crs_file():
+        return '.crs.json'
+
+    @staticmethod
     def parameters_file():
         return '.parameters.json'
 

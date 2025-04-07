@@ -57,7 +57,13 @@ class LocalBench:
                 [cmd], shell=True, check=True, cwd=PathMaker.node_crate_path()
             )
 
-            # Create alias for the client and nodes binary.
+            # Recompile the gen_files crate
+            cmd = CommandMaker.compile_gen_files()
+            subprocess.run(
+                [cmd], shell=True, check=True
+            )
+
+            # Create alias for the client and nodes binary. and gen_files
             cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
             subprocess.run([cmd], shell=True)
 
@@ -72,6 +78,10 @@ class LocalBench:
             names = [x.name for x in keys]
             committee = LocalCommittee(names, self.BASE_PORT, self.workers)
             committee.print(PathMaker.committee_file())
+            # generate crs file
+            fault_tolerance = (len(names) -1) // 3
+            cmd = CommandMaker.generate_crs(fault_tolerance).split()
+            subprocess.run(cmd, check=True)
 
             self.node_parameters.print(PathMaker.parameters_file())
 
@@ -95,6 +105,7 @@ class LocalBench:
                     PathMaker.key_file(i),
                     PathMaker.committee_file(),
                     PathMaker.db_path(i),
+                    PathMaker.crs_file(),
                     PathMaker.parameters_file(),
                     debug=debug
                 )

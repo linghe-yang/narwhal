@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 use curve25519_dalek::{RistrettoPoint, Scalar};
 use serde::{Deserialize, Serialize};
 use crypto::{Digest, PublicKey, Signature};
+use crate::file_io::Import;
 use crate::types_and_const::{Epoch};
 
 #[derive(Debug, Clone,Serialize,Deserialize)]
@@ -9,6 +10,8 @@ pub struct CommonReferenceString {
     pub g: Vec<RistrettoPoint>,
     pub h: RistrettoPoint,
 }
+
+impl Import for CommonReferenceString {}
 #[derive(Debug)]
 pub struct GroupParameters{
     pub g_vec: Vec<RistrettoPoint>,

@@ -1,60 +1,56 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crypto::{generate_production_keypair, PublicKey, SecretKey};
 use log::info;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{self, OpenOptions};
-use std::io::BufWriter;
-use std::io::Write as _;
 use std::net::SocketAddr;
-use thiserror::Error;
+use model::file_io::*;
 use model::types_and_const::{Id, Stake, WorkerId};
 
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("Node {0} is not in the committee")]
-    NotInCommittee(PublicKey),
-
-    #[error("Unknown worker id {0}")]
-    UnknownWorker(WorkerId),
-
-    #[error("Failed to read config file '{file}': {message}")]
-    ImportError { file: String, message: String },
-
-    #[error("Failed to write config file '{file}': {message}")]
-    ExportError { file: String, message: String },
-}
-
-pub trait Import: DeserializeOwned {
-    fn import(path: &str) -> Result<Self, ConfigError> {
-        let reader = || -> Result<Self, std::io::Error> {
-            let data = fs::read(path)?;
-            Ok(serde_json::from_slice(data.as_slice())?)
-        };
-        reader().map_err(|e| ConfigError::ImportError {
-            file: path.to_string(),
-            message: e.to_string(),
-        })
-    }
-}
-
-pub trait Export: Serialize {
-    fn export(&self, path: &str) -> Result<(), ConfigError> {
-        let writer = || -> Result<(), std::io::Error> {
-            let file = OpenOptions::new().create(true).write(true).open(path)?;
-            let mut writer = BufWriter::new(file);
-            let data = serde_json::to_string_pretty(self).unwrap();
-            writer.write_all(data.as_ref())?;
-            writer.write_all(b"\n")?;
-            Ok(())
-        };
-        writer().map_err(|e| ConfigError::ExportError {
-            file: path.to_string(),
-            message: e.to_string(),
-        })
-    }
-}
+// #[derive(Error, Debug)]
+// pub enum ConfigError {
+//     #[error("Node {0} is not in the committee")]
+//     NotInCommittee(PublicKey),
+//
+//     #[error("Unknown worker id {0}")]
+//     UnknownWorker(WorkerId),
+//
+//     #[error("Failed to read config file '{file}': {message}")]
+//     ImportError { file: String, message: String },
+//
+//     #[error("Failed to write config file '{file}': {message}")]
+//     ExportError { file: String, message: String },
+// }
+//
+// pub trait Import: DeserializeOwned {
+//     fn import(path: &str) -> Result<Self, ConfigError> {
+//         let reader = || -> Result<Self, std::io::Error> {
+//             let data = fs::read(path)?;
+//             Ok(serde_json::from_slice(data.as_slice())?)
+//         };
+//         reader().map_err(|e| ConfigError::ImportError {
+//             file: path.to_string(),
+//             message: e.to_string(),
+//         })
+//     }
+// }
+//
+// pub trait Export: Serialize {
+//     fn export(&self, path: &str) -> Result<(), ConfigError> {
+//         let writer = || -> Result<(), std::io::Error> {
+//             let file = OpenOptions::new().create(true).write(true).open(path)?;
+//             let mut writer = BufWriter::new(file);
+//             let data = serde_json::to_string_pretty(self).unwrap();
+//             writer.write_all(data.as_ref())?;
+//             writer.write_all(b"\n")?;
+//             Ok(())
+//         };
+//         writer().map_err(|e| ConfigError::ExportError {
+//             file: path.to_string(),
+//             message: e.to_string(),
+//         })
+//     }
+// }
 
 
 
@@ -174,14 +170,14 @@ impl Committee {
             .collect()
     }
 
-    /// Returns the stake required to reach a quorum (2f+1).
+    /// Returns the quorum (2f+1).
     pub fn authorities_quorum_threshold(&self) -> usize {
-        2 * self.authorities.len() / 3 + 1
+        (2 * self.authorities.len() + 1) / 3
     }
 
-    /// Returns the stake required to reach availability (f+1).
+    /// Returns the fault tolerance(f)
     pub fn authorities_fault_tolerance(&self) -> usize {
-        self.authorities.len() / 3
+        (self.authorities.len() - 1) / 3
     }
 
     /// Returns the stake required to reach a quorum (2f+1).

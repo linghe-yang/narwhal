@@ -1,0 +1,11 @@
+[package]
+name = "gen_files"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.8"
+clap = "2.33.3"
+curve25519-dalek = { version = "4.0",features = ["rand_core","serde"] }
+model = { path = "../model" }
+serde_json = "1.0.140"
