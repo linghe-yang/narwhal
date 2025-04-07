@@ -26,11 +26,15 @@ impl PartialEq for Vote {
 }
 
 // Fixture
+#[cfg(feature = "pq")]
+pub fn keys() -> Vec<(PublicKey, SecretKey)> {
+    (0..4).map(|_| generate_keypair()).collect()
+}
+#[cfg(not(feature = "pq"))]
 pub fn keys() -> Vec<(PublicKey, SecretKey)> {
     let mut rng = StdRng::from_seed([0; 32]);
     (0..4).map(|_| generate_keypair(&mut rng)).collect()
 }
-
 // Fixture
 pub fn committee() -> Committee {
     Committee {

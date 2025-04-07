@@ -2,7 +2,7 @@
 name = "crypto"
 version = "0.1.0"
 authors = ["Alberto Sonnino <alberto@sonnino.com>"]
-edition = "2018"
+edition = "2024"
 publish = false
 
 [dependencies]
@@ -11,3 +11,9 @@ ed25519-dalek = { version = "1.0.1", features = ["batch"] }
 serde = { version = "1.0", features = ["derive"] }
 rand = "0.7.3"
 base64 = "0.13.0"
+pqcrypto-dilithium = { version = "0.5.0" ,features = ["serialization"] }
+pqcrypto-traits = "0.3.5"
+hex = "0.4.3"
+sha2 = "0.10"
+[features]
+pq = []

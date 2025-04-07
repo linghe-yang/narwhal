@@ -321,6 +321,7 @@ impl KeyPair {
         let (name, secret) = generate_production_keypair();
         Self { name, secret }
     }
+
 }
 
 impl Default for KeyPair {

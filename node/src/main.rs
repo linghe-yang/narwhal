@@ -1,7 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 
 use anyhow::{Context, Result};
-use bavss::Breeze;
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use model::file_io::Export;
 use model::file_io::Import;
@@ -16,6 +15,7 @@ use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
+use bavss::Breeze;
 use secondary_bft::init_bft::InitBFT;
 #[cfg(feature = "dolphin")]
 use consensus::Dolphin;

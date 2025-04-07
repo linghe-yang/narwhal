@@ -63,7 +63,10 @@ async fn propose_payload() {
     );
 
     // Send enough digests for the header payload.
+    #[cfg(not(feature = "pq"))]
     let digest = Digest(name.0);
+    #[cfg(feature = "pq")]
+    let digest = Digest(name.to_hash32());
     let worker_id = 0;
     tx_our_digests
         .send((digest.clone(), worker_id))

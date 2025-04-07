@@ -9,3 +9,5 @@ clap = "2.33.3"
 curve25519-dalek = { version = "4.0",features = ["rand_core","serde"] }
 model = { path = "../model" }
 serde_json = "1.0.140"
+[features]
+benchmark = []

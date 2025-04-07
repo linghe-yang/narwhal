@@ -19,11 +19,11 @@ class CommandMaker:
     @staticmethod
     def compile(protocol='tusk'):
         protocol = '' if protocol == 'tusk' else protocol
-        return f'cargo build --quiet --release --features "benchmark {protocol}"'
+        return f'cargo build --quiet --release --features "benchmark pq {protocol}"'
 
     @staticmethod
     def compile_gen_files():
-        return f'cargo build --quiet --release --package gen_files'
+        return f'cargo build --quiet --release --package gen_files --features "benchmark"'
 
     @staticmethod
     def generate_key(filename):

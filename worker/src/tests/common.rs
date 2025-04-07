@@ -17,9 +17,15 @@ use tokio::task::JoinHandle;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 // Fixture
+#[cfg(not(feature = "pq"))]
 pub fn keys() -> Vec<(PublicKey, SecretKey)> {
     let mut rng = StdRng::from_seed([0; 32]);
     (0..4).map(|_| generate_keypair(&mut rng)).collect()
+}
+#[cfg(feature = "pq")]
+pub fn keys() -> Vec<(PublicKey, SecretKey)> {
+    let mut rng = StdRng::from_seed([0; 32]);
+    (0..4).map(|_| generate_keypair()).collect()
 }
 
 // Fixture

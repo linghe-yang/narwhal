@@ -24,7 +24,10 @@ pub fn generate_crs(t: usize) {
 }
 
 fn write_crs_to_json(crs: &CommonReferenceString) -> std::io::Result<()> {
+    #[cfg(feature = "benchmark")]
     let path = Path::new("./.crs.json");
+    #[cfg(not(feature = "benchmark"))]
+    let path = Path::new("benchmark/.crs.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
