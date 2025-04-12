@@ -7,8 +7,9 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::breeze_structs::{BreezeContent, BreezeMessage, BreezeReconRequest, ReconstructShare, SingleShare};
+use model::breeze_universal::BreezeReconRequest;
 use model::types_and_const::{Epoch, Id};
+use crate::breeze_structs::{BreezeContent, BreezeMessage, ReconstructShare, SingleShare};
 
 pub struct BreezeReconstruct {
     node_id: (PublicKey,Id),
@@ -66,19 +67,6 @@ impl BreezeReconstruct {
                                     && message.index <= share.y_k.len()
                                 {
                                     let index = message.index - 1;
-                                    // let wave_share = Share{
-                                    //     c:share.c,
-                                    //     r_hat: vec![share.r_hat[index]],
-                                    //     r_witness: vec![share.r_witness[index].clone()],
-                                    //     y_k: vec![share.y_k[index]],
-                                    //     phi_k: PhiElement{
-                                    //         IProof: vec![share.phi_k.IProof[index].clone()],
-                                    //         D_hat: share.phi_k.D_hat,
-                                    //         V_D_i: share.phi_k.V_D_i
-                                    //     },
-                                    //     n: share.n,
-                                    //     epoch: share.epoch,
-                                    // };
                                     let single_share = SingleShare{
                                         c:share.c,
                                         y: share.y_k[index]
@@ -87,17 +75,6 @@ impl BreezeReconstruct {
 
                                 }
                             }
-                            // if bm.c == id_to_cumulate {
-                            //     if let BreezeContent::Share(share) = &bm.content {
-                            //         if share.epoch == message.1
-                            //             && message.2 <= share.y_k.len() as u64
-                            //         {
-                            //             let point: Scalar =
-                            //                 share.y_k[message.2 as usize - 1].clone();
-                            //             cumulated_secret += point;
-                            //         }
-                            //     }
-                            // }
                         }
                     }
                     let reconstruct_message = BreezeMessage::new_reconstruct_message(
@@ -114,11 +91,6 @@ impl BreezeReconstruct {
                         .entry((message.epoch, message.index))
                         .or_insert_with(Vec::new)
                         .extend(handlers);
-                    // for h in handlers {
-                    //     if let Err(_e) = h.await {
-                    //         error!("Broadcast of shares for reconstruction was not successful")
-                    //     }
-                    // }
                 }
             }
         }

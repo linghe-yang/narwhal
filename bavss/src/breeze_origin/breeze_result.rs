@@ -1,13 +1,14 @@
 
-use curve25519_dalek::Scalar;
 use log::{info};
 use std::collections::{HashMap, HashSet};
+use curve25519_dalek::Scalar;
 use tokio::sync::mpsc::{Receiver, Sender};
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::breeze_structs::{BreezeContent, BreezeMessage};
 use model::types_and_const::{Epoch, RandomNum};
 use crate::breeze_origin::breeze_reconstruct_dealer::BreezeReconResult;
+use crate::breeze_structs::{BreezeContent, BreezeMessage};
+use crate::Secret;
 
 pub struct BreezeResult {
     // committee: Arc<RwLock<Committee>>,
@@ -17,7 +18,7 @@ pub struct BreezeResult {
     breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
 
     certificates_to_reconstruct_buffer: Vec<(HashSet<Digest>, Epoch, usize)>,
-    shares_to_cumulate: HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey,Scalar)>>>,
+    shares_to_cumulate: HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey,Secret)>>>,
     reconstructed_epoch_wave: Vec<(Epoch, usize)>
 }
 
@@ -62,25 +63,18 @@ impl BreezeResult {
                     match shares_from_others.content {
                         BreezeContent::Reconstruct(share) => {
                             let key = (share.epoch, share.index);
-                            // for secret in share.secrets{
-                            //
-                            // }
                             let shares_vec = self.shares_to_cumulate
                                 .entry(key)
                                 .or_insert_with(HashMap::new);
                             for single_share in share.secrets {
+                                if !single_share.verify(){
+                                    continue;
+                                }
                                 let scalar_set = shares_vec
                                     .entry(single_share.c)
                                     .or_insert_with(HashSet::new);
                                 scalar_set.insert((shares_from_others.sender,single_share.y));
                             }
-                            // let is_duplicate = shares_vec.iter().any(|(existing_id, existing_share)| {
-                            //     *existing_id == shares_from_others.sender && *existing_share == share
-                            // });
-                            // if !is_duplicate && !self.reconstructed_epoch_wave.contains(&key) {
-                            //     // warn!("share to reconstruct :{:?}",share);
-                            //     shares_vec.push((shares_from_others.sender, share));
-                            // }
                         }
                         _ => {}
                     }
@@ -98,7 +92,7 @@ impl BreezeResult {
                 if let Some(shares) = self.shares_to_cumulate.get(&key) {
                     for (c,s) in shares.iter() {
                         if s.len() >= threshold {
-                            let s: Vec<(PublicKey,Scalar)> = s.iter().cloned().collect();
+                            let s: Vec<(PublicKey,Secret)> = s.iter().cloned().collect();
                             secret_can_be_reconstructed.push((*c, s));
                             digest_can_be_reconstructed.insert(*c);
                         }
@@ -129,62 +123,10 @@ impl BreezeResult {
                     cumulated_output += BreezeReconResult::interpolate(&ids, &values);
                 }
                 let recon_output = BreezeReconResult::new(cumulated_output);
-                self.breeze_result_sender.send((epoch, index, recon_output.scalar_to_random()))
+                self.breeze_result_sender.send((epoch, index, recon_output.secret_to_number()))
                     .await
                     .expect("breeze_result_sender error to send");
             }
-
-
-
-
-
-
-
-            // let mut secrets_to_reconstruct = Vec::new();
-            //
-            // // 使用 retain 来同时遍历和删除
-            // let committee = self.committee.read().await;
-            // self.certificates_to_reconstruct_buffer.retain(|(digests, epoch, index)| {
-            //     let key = (*epoch, *index);
-            //     if let Some(shares) = self.shares_to_cumulate.get(&key) {
-            //         if shares.len() >= committee.authorities_fault_tolerance() + 1 {
-            //             let mut cumulated_secrets = Vec::new();
-            //             for (pk,share) in shares {
-            //                 let mut cumulated_secret = Scalar::ZERO;
-            //                 let digest_in_share: HashSet<_> = share.secrets.iter().map(|ss| ss.c).collect();
-            //                 if &digest_in_share != digests {
-            //                     return true;
-            //                 }
-            //                 for ss in share.secrets.iter() {
-            //                     cumulated_secret += ss.y;
-            //                 }
-            //                 cumulated_secrets.push((pk.clone(),cumulated_secret));
-            //             }
-            //
-            //             secrets_to_reconstruct.push((*epoch, *index, cumulated_secrets));
-            //             self.reconstructed_epoch_wave.push(key);
-            //             self.shares_to_cumulate.remove(&key);
-            //             return false; // 从 dealers_to_reconstruct_buffer 中删除
-            //         }
-            //     }
-            //     true // 保留在 dealers_to_reconstruct_buffer 中
-            // });
-            // for (epoch,index,secret_set) in secrets_to_reconstruct{
-            //     let secrets: Vec<Scalar> = secret_set.iter().map(|(_,recon_share)| recon_share.clone()).collect();
-            //     let pks: Vec<PublicKey> = secret_set.iter().map(|rs| rs.0).collect();
-            //     let mut ids = Vec::new();
-            //     for pk in pks {
-            //         ids.push(committee.get_id(&pk).unwrap());
-            //     }
-            //     // warn!("ready to gen breezereconresult. secrets: {:?} , ids:{:?}", secrets, ids);
-            //     let recon_output = BreezeReconResult::new(epoch, index, &ids, &secrets);
-            //     // warn!("recon_output: {:?}", recon_output);
-            //     self.breeze_result_sender.send(recon_output).await.expect("breeze_result_sender error to send");
-            // }
-
-
-
-
         }
     }
 }

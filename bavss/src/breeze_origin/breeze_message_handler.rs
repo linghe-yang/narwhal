@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::SinkExt;
 use tokio::sync::mpsc::{Sender};
-use model::breeze_structs::{BreezeContent, BreezeMessage};
 use network::{MessageHandler, Writer};
+use crate::breeze_structs::{BreezeContent, BreezeMessage};
 
 #[derive(Clone)]
 pub struct BreezeMessageHandler {

@@ -20,7 +20,7 @@ use secondary_bft::init_bft::InitBFT;
 #[cfg(feature = "dolphin")]
 use consensus::Dolphin;
 use drb_coordinator::beacon_hub::BeaconHub;
-use model::breeze_structs::{BreezeCertificate, CommonReferenceString};
+use model::breeze_universal::{BreezeCertificate, CommonReferenceString};
 use worker::Worker;
 
 

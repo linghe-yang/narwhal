@@ -19,7 +19,8 @@ def local(ctx, debug=True):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'dolphin'
+        'protocol': 'dolphin',
+        'crypto': 'origin'
     }
     node_params = {
         'timeout': 1_000,  # ms

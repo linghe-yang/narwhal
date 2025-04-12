@@ -8,6 +8,8 @@ pub type Stake = u32;
 pub type WorkerId = u32;
 
 pub type RandomNum = u64;
+#[cfg(feature = "pq")]
+pub type ZqMod = u128;
 
 pub static BEACON_PER_EPOCH: OnceLock<u64> = OnceLock::new();
 pub static MAX_WAVE: OnceLock<u64> = OnceLock::new();

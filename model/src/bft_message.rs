@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashSet};
 use serde::{Deserialize, Serialize};
 use crypto::{PublicKey, Signature};
-use crate::breeze_structs::BreezeCertificate;
+use crate::breeze_universal::BreezeCertificate;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DumboMessage{
     pub sender: PublicKey,

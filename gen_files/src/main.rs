@@ -23,6 +23,7 @@ fn main() {
             .parse::<usize>()
             .expect("Faults must be a valid number");
         
+        #[cfg(not(feature = "pq"))]
         generate_crs(faults);
     }
 }

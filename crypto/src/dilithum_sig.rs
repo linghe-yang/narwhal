@@ -12,6 +12,11 @@ use crate::{CryptoError, Digest};
 pub struct PublicKey(DilithiumPublicKey);
 
 impl PublicKey {
+
+    pub fn new_random_test() -> PublicKey {
+        let (pk,_) = keypair();
+        PublicKey(pk)
+    }
     pub fn to_hash32(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(self.0.as_bytes());

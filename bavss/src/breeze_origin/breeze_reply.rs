@@ -7,9 +7,10 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{PublicKey, SecretKey, Signature};
-use model::breeze_structs::{BreezeContent, BreezeMessage, CommonReferenceString};
+use model::breeze_universal::CommonReferenceString;
 use model::types_and_const::{Epoch, Id};
 use crate::breeze_origin::breeze_share_dealer::Shares;
+use crate::breeze_structs::{BreezeContent, BreezeMessage};
 
 pub struct BreezeReply {
     node_id: (PublicKey,Id),

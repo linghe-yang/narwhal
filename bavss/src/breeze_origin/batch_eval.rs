@@ -6,9 +6,10 @@ use rs_merkle::algorithms::Sha256;
 use rs_merkle::Hasher;
 use std::ops::Mul;
 use crypto::Digest as CryptoDigest;
-use model::breeze_structs::{CommonReferenceString, GroupParameters, IProofUnit, PhiElement};
-use crate::breeze_origin::merkletree::{generate_merkle_tree, hash_merkle1, hash_merkle2, verify_merkle_proof};
-use crate::breeze_origin::utils::transpose;
+use model::breeze_universal::{CommonReferenceString};
+use crate::breeze_origin::merkletree::{generate_merkle_tree, verify_merkle_proof};
+use crate::breeze_origin::utils::{hash_merkle1, hash_merkle2, transpose};
+use crate::breeze_structs::{GroupParameters, IProofUnit, PhiElement};
 
 pub fn batch_eval(
     crs: &CommonReferenceString,

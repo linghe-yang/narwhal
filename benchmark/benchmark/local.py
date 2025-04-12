@@ -52,7 +52,7 @@ class LocalBench:
             sleep(0.5)  # Removing the store may take time.
 
             # Recompile the latest code.
-            cmd = CommandMaker.compile(self.protocol)
+            cmd = CommandMaker.compile(self.protocol, self.crypto)
             subprocess.run(
                 [cmd], shell=True, check=True, cwd=PathMaker.node_crate_path()
             )

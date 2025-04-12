@@ -14,12 +14,18 @@ serde = { version = "1.0.218", features = ["derive"] }
 rand = "0.8"
 rs_merkle = "1.5.0"
 sha2 = "0.9.9"
-model = { path = "../model" }
+#model = { path = "../model" }
+model = { path = "../model"}
 network = { path = "../network" }
 config = {path = "../config"}
-crypto = { path = "../crypto" }
+crypto = { path = "../crypto"}
 bytes = "1.10.0"
+num-traits = "0.2.19"
+nalgebra = "0.32"
+num-modular = {version = "0.5", feature = "zero"}
+rayon = "1.5"
+num-bigint = "0.4"
+num-prime = "0.4"
 
 [features]
-origin = []
-pq = []
+pq = ["model/pq", "crypto/pq"]

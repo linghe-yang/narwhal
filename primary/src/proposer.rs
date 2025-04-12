@@ -10,7 +10,7 @@ use log::{debug, log_enabled};
 use std::collections::VecDeque;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
-use model::breeze_structs::BreezeCertificate;
+use model::breeze_universal::BreezeCertificate;
 use model::types_and_const::{Round, WorkerId};
 
 #[cfg(test)]

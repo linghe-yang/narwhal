@@ -229,6 +229,16 @@ class BenchParameters:
                 protocol = json['protocol']
                 raise ConfigError(f'Unsupported protocol "{protocol}"')
 
+            if 'crypto' not in json:
+                self.crypto = 'origin'
+            elif json['crypto'] == 'post_quantum':
+                self.crypto = 'pq'
+            elif json['crypto'] == 'origin':
+                self.crypto = 'origin'
+            else:
+                crypto = json['crypto']
+                raise ConfigError(f'Unsupported crypto "{crypto}"')
+
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

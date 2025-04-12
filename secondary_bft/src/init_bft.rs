@@ -4,7 +4,7 @@ use config::{Committee, KeyPair};
 use crypto::{Digest, PublicKey, SecretKey, Signature};
 use futures::SinkExt;
 use model::bft_message::{DumboContent, DumboMessage};
-use model::breeze_structs::{BreezeCertificate};
+use model::breeze_universal::{BreezeCertificate};
 use network::{CancelHandler, MessageHandler, Receiver as NetworkReceiver, ReliableSender, Writer};
 use sha2::{Digest as ShaDigest, Sha256};
 use std::collections::{BTreeSet, HashMap, HashSet};

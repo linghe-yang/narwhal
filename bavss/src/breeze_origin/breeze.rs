@@ -12,9 +12,10 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
 use config::{Committee, KeyPair};
-use model::breeze_structs::{BreezeCertificate, BreezeMessage, BreezeReconRequest, CommonReferenceString};
+use model::breeze_universal::{BreezeCertificate, BreezeReconRequest, CommonReferenceString};
 use model::types_and_const::{Epoch, Id, RandomNum, CHANNEL_CAPACITY};
 use crypto::{Digest};
+use crate::breeze_structs::BreezeMessage;
 
 pub struct Breeze;
 

@@ -5,8 +5,9 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::breeze_structs::{BreezeCertificate, BreezeContent, BreezeMessage};
+use model::breeze_universal::BreezeCertificate;
 use model::types_and_const::{Epoch, Id};
+use crate::breeze_structs::{BreezeContent, BreezeMessage};
 
 pub struct BreezeConfirm {
     node_id: (PublicKey,Id),

@@ -4,20 +4,24 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use crypto::PublicKey;
-use model::breeze_structs::{CommonReferenceString, Share, WitnessBreeze};
+use crypto::{Digest, PublicKey};
+use model::breeze_universal::CommonReferenceString;
 use model::types_and_const::{Epoch, Id};
 use crate::breeze_origin::batch_eval::{batch_eval, batch_verify_eval};
 use crate::breeze_origin::merkletree::{generate_merkle_tree, verify_merkle_proof};
 use crate::breeze_origin::utils::transpose;
-
+use crate::breeze_structs::{Share, WitnessBreeze};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Shares {
-    pub shares: Vec<(Share, PublicKey)>,
-}
+pub struct Shares (pub(crate) Vec<(Share, PublicKey)>);
 
 impl Shares {
+    pub fn get_c_ref(&self) -> &Digest{
+        &self.0[0].0.c
+    }
+    pub fn get_shares_ref(&self) -> &Vec<(Share, PublicKey)> {
+        &self.0
+    }
     fn generate_batched_polynomial(batch: usize, t: usize, mut rng: OsRng) -> Vec<Vec<Scalar>> {
         let batched_polynomial: Vec<Vec<Scalar>> = (0..batch)
             .map(|_| (0..t + 1).map(|_| Scalar::random(&mut rng)).collect())
@@ -103,16 +107,6 @@ impl Shares {
 
         result
     }
-
-    // fn calc_poly_test(coffis: Vec<Scalar>, point: Scalar) -> Scalar {
-    //     let mut res = Scalar::ZERO;
-    //     for (i, effi) in coffis.iter().enumerate() {
-    //         let temp = Self::pow_scalar(point, i);
-    //         res += temp * effi;
-    //     }
-    //     res
-    // }
-
     pub fn verify(crs:&CommonReferenceString,node_id: Id,t:usize, share: Share) -> bool {
         let y = Self::generate_evaluation_points_for_verifier(t,node_id);
         if !batch_verify_eval(crs, &share.r_hat, share.y_k, y, share.phi_k, t, share.n){
@@ -137,7 +131,6 @@ impl Shares {
         }
         flag
     }
-
     pub fn new(
         batch_size: usize,
         epoch: Epoch,
@@ -184,6 +177,6 @@ impl Shares {
 
             all_set.push((share, ids[i].0));
         }
-        Shares { shares: all_set }
+        Shares(all_set)
     }
 }

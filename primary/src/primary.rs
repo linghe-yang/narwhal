@@ -22,7 +22,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use model::breeze_structs::BreezeCertificate;
+use model::breeze_universal::BreezeCertificate;
 use model::types_and_const::{Round, WorkerId, CHANNEL_CAPACITY};
 
 

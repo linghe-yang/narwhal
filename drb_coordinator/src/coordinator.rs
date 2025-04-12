@@ -1,6 +1,6 @@
 use crate::error::DrbError;
 use config::Committee;
-use model::breeze_structs::{BreezeCertificate, BreezeReconRequest};
+use model::breeze_universal::{BreezeCertificate, BreezeReconRequest};
 use model::types_and_const::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

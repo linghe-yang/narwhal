@@ -1,24 +1,31 @@
-use curve25519_dalek::scalar::Scalar;
+
 use model::types_and_const::{Id, RandomNum};
+use crate::Secret;
 
 pub struct BreezeReconResult{
-    pub value: Scalar,
+    pub value: Secret,
     // pub epoch: Epoch,
     // pub index: usize,
 }
 
 impl BreezeReconResult {
-    pub fn new(output: Scalar ) -> Self {
+    pub fn new(output: Secret ) -> Self {
         BreezeReconResult{
             value: output,
             // epoch,
             // index
         }
     }
-    
-    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Scalar>) -> Scalar {
+    #[cfg(not(feature = "pq"))]
+    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>) -> Secret {
         let evaluate_points = Self::generate_evaluation_points_n(evaluate_ids);
         Self::lagrange_interpolation_at_zero(&evaluate_points,shares)
+    }
+    #[cfg(feature = "pq")]
+    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>) -> Secret {
+        // let evaluate_points = Self::generate_evaluation_points_n(evaluate_ids);
+        // Self::lagrange_interpolation_at_zero(&evaluate_points,shares)
+        0
     }
 
     // 计算拉格朗日基多项式 l_i(0) 的值
@@ -36,13 +43,19 @@ impl BreezeReconResult {
     // 
     //     numerator * denominator.invert() // l_i(0) = numerator / denominator
     // }
-
+    
+    #[cfg(not(feature = "pq"))]
     pub fn secret_to_number(&self) -> RandomNum {
         let bytes = self.value.to_bytes(); // 获取底层 [u8; 32]
         u64::from_le_bytes(bytes[..8].try_into().unwrap()) // 取低8字节转为u64
     }
+    #[cfg(feature = "pq")]
+    pub fn secret_to_number(&self) -> RandomNum {
+        0
+    }
 
     // 根据 t+1 个点计算 f(0)
+    #[cfg(not(feature = "pq"))]
     fn lagrange_interpolation_at_zero(points: &Vec<Scalar>, values: &Vec<Scalar>) -> Scalar {
         let mut result = Scalar::ZERO;
 
@@ -61,6 +74,7 @@ impl BreezeReconResult {
 
         result
     }
+    #[cfg(not(feature = "pq"))]
     pub fn generate_evaluation_points_n(ids: &Vec<Id>) -> Vec<Scalar> {
         let mut res: Vec<Scalar> = Vec::new();
 

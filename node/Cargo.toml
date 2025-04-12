@@ -29,7 +29,7 @@ secondary_bft = { path = "../secondary_bft" }
 [features]
 benchmark = ["worker/benchmark", "primary/benchmark", "consensus/benchmark"]
 dolphin = ["consensus/dolphin", "config/dolphin"]
-pq = ["crypto/pq", "primary/pq", "worker/pq"]
+pq = ["crypto/pq", "primary/pq", "worker/pq", "model/pq", "bavss/pq"]
 [[bin]]         
 name = "benchmark_client"   
 path = "src/benchmark_client.rs" 
