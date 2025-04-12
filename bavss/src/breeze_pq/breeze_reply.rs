@@ -1,16 +1,15 @@
 use crate::breeze_pq::breeze_share_dealer::Shares;
-use crate::breeze_structs::{BreezeContent, BreezeMessage, Share};
+use crate::breeze_structs::{BreezeContent, BreezeMessage, PQCrs, Share};
 use bytes::Bytes;
 use config::Committee;
 use crypto::{Digest, PublicKey, SecretKey, Signature};
 use log::info;
-use model::breeze_universal::CommonReferenceString;
 use model::types_and_const::{Epoch, Id};
 use network::{CancelHandler, ReliableSender};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 
 pub struct BreezeReply {
     node_id: (PublicKey, Id),
@@ -19,10 +18,11 @@ pub struct BreezeReply {
     breeze_share_receiver: Receiver<BreezeMessage>,
     breeze_merkle_roots_receiver: Receiver<BreezeMessage>,
     merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
+    merkle_watch_sender:watch::Sender<()>,
     shares_received: HashMap<Epoch, HashMap<PublicKey, Share>>,
     network: ReliableSender,
     valid_shares: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Share>>>>,
-    common_reference_string: Arc<RwLock<CommonReferenceString>>,
+    common_reference_string: Arc<RwLock<PQCrs>>,
     cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
 }
 
@@ -34,9 +34,10 @@ impl BreezeReply {
         breeze_share_receiver: Receiver<BreezeMessage>,
         breeze_merkle_roots_receiver: Receiver<BreezeMessage>,
         merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
+        merkle_watch_sender:watch::Sender<()>,
         network: ReliableSender,
         valid_shares: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Share>>>>,
-        common_reference_string: Arc<RwLock<CommonReferenceString>>,
+        common_reference_string: Arc<RwLock<PQCrs>>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -46,6 +47,7 @@ impl BreezeReply {
                 breeze_share_receiver,
                 breeze_merkle_roots_receiver,
                 merkle_roots_received,
+                merkle_watch_sender,
                 shares_received: HashMap::new(),
                 network,
                 valid_shares,
@@ -74,9 +76,8 @@ impl BreezeReply {
 
                     if !Shares::verify_shares(
                         &crs,
-                        self.node_id.1,
-                        committee.authorities_fault_tolerance(),
                         &my_share,
+                        self.node_id.1
                     ) {
                         continue;
                     }
@@ -92,6 +93,7 @@ impl BreezeReply {
                                 .or_insert_with(HashMap::new);
                             inner_map.entry(message.sender).or_insert(mr.roots);
                             drop(merkle_roots);
+                            self.merkle_watch_sender.send(()).unwrap();
                         }
                         _ => continue,
                     }
@@ -106,7 +108,8 @@ impl BreezeReply {
                     for (pk, share) in share_map {
                         // 检查 merkle_map 中是否有相同的 PublicKey
                         if let Some(digests) = merkle_map.get(pk) {
-                            if Shares::verify_merkles(share, digests) {
+                            if Shares::verify_merkle_batch(self.node_id.1,share, digests) {
+                                println!("verify_merkle_batch success");
                                 let signature = Signature::new(&share.c, &self.signing_key);
                                 // let mut valid_shares = self.valid_shares.write().await;
                                 // let inner_map =

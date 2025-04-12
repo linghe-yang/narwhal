@@ -1,43 +1,91 @@
-
-use log::{info};
-use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc::{Receiver, Sender};
+use crate::breeze_pq::breeze_reconstruct_dealer::BreezeReconResult;
+use crate::breeze_structs::{BreezeContent, BreezeMessage, PQCrs, SingleShare};
+use crate::Secret;
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::types_and_const::{Epoch, RandomNum};
-use crate::breeze_pq::breeze_reconstruct_dealer::BreezeReconResult;
-use crate::breeze_structs::{BreezeContent, BreezeMessage};
-use crate::Secret;
+use log::{error, info};
+use model::types_and_const::{Epoch, RandomNum, MAX_INDEX};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{watch, RwLock};
+use crate::breeze_pq::breeze_share_dealer::Shares;
 
 pub struct BreezeResult {
     // committee: Arc<RwLock<Committee>>,
     committee: Committee,
-    breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
-    breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
+    // breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
+    // breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
     breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
+    // merkle_roots_received: Arc<RwLock<HashMap<Epoch,HashMap<PublicKey,Vec<Digest>>>>>,
+    // certificates_to_reconstruct_buffer: Vec<(HashSet<Digest>, Epoch, usize)>,
+    certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>>,
+    // shares_unverified_yet: Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>>,
+    shares_verified:
+        Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>>,
+    // reconstructed_epoch_wave: Vec<(Epoch, usize)>
+    reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>>,
 
-    certificates_to_reconstruct_buffer: Vec<(HashSet<Digest>, Epoch, usize)>,
-    shares_to_cumulate: HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey,Secret)>>>,
-    reconstructed_epoch_wave: Vec<(Epoch, usize)>
+    shares_verified_watch_receiver: watch::Receiver<()>,
+    common_reference_string: Arc<RwLock<PQCrs>>,
 }
 
 impl BreezeResult {
     pub fn spawn(
         // committee: Arc<RwLock<Committee>>,
         committee: Committee,
-        breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
+        breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>, Epoch, usize)>,
         breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
+        merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
+        merkle_watch_receiver: watch::Receiver<()>,
         breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
+        common_reference_string: Arc<RwLock<PQCrs>>,
     ) {
+        let shares_unverified_yet: Arc<
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+        > = Arc::new(RwLock::new(HashMap::new()));
+        let shares_verified: Arc<
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+        > = Arc::new(RwLock::new(HashMap::new()));
+        let reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>> =
+            Arc::new(RwLock::new(Vec::new()));
+        let certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>> =
+            Arc::new(RwLock::new(Vec::new()));
+
+        let (shares_verified_watch_sender, shares_verified_watch_receiver) = watch::channel(());
+
+        tokio::spawn(Self::merkle_watch_monitor(
+            merkle_watch_receiver,
+            Arc::clone(&merkle_roots_received),
+            Arc::clone(&shares_unverified_yet),
+            Arc::clone(&shares_verified),
+            shares_verified_watch_sender.clone(),
+        ));
+        tokio::spawn(Self::certificate_share_monitor(
+            breeze_recon_certificate_receiver,
+            Arc::clone(&reconstructed_epoch_wave),
+            Arc::clone(&certificates_to_reconstruct_buffer),
+            breeze_reconstruct_secret_receiver,
+            Arc::clone(&merkle_roots_received),
+            Arc::clone(&shares_verified),
+            Arc::clone(&shares_unverified_yet),
+            shares_verified_watch_sender.clone(),
+        ));
+
         tokio::spawn(async move {
             Self {
                 committee,
-                breeze_recon_certificate_receiver,
-                breeze_reconstruct_secret_receiver,
+                // breeze_recon_certificate_receiver,
+                // breeze_reconstruct_secret_receiver,
                 breeze_result_sender,
-                certificates_to_reconstruct_buffer: Vec::new(),
-                shares_to_cumulate: HashMap::new(),
-                reconstructed_epoch_wave: Vec::new()
+                // merkle_roots_received,
+                certificates_to_reconstruct_buffer: Arc::clone(&certificates_to_reconstruct_buffer),
+                // shares_unverified_yet,
+                shares_verified,
+                reconstructed_epoch_wave: Arc::clone(&reconstructed_epoch_wave),
+
+                shares_verified_watch_receiver,
+                common_reference_string
             }
             .run()
             .await;
@@ -47,84 +95,288 @@ impl BreezeResult {
     pub async fn run(&mut self) {
         info!("Breeze result start to listen");
         let threshold = self.committee.authorities_fault_tolerance() + 1;
+        let q = self.common_reference_string.read().await.q;
         loop {
-            tokio::select! {
-                Some(certificates_to_reconstruct) = self.breeze_recon_certificate_receiver.recv() => {
-                    let key = (certificates_to_reconstruct.1, certificates_to_reconstruct.2);
-                    if !self.reconstructed_epoch_wave.contains(&key) {
-                        let exists = self.certificates_to_reconstruct_buffer.iter().any(|(_, e, w)| e == &certificates_to_reconstruct.1 && w == &certificates_to_reconstruct.2);
-                        if !exists {
-                            self.certificates_to_reconstruct_buffer.push(certificates_to_reconstruct);
+            if self.shares_verified_watch_receiver.changed().await.is_ok() {
+                let mut secrets_to_reconstruct = Vec::new();
+                let mut certificates_to_reconstruct_buffer =
+                    self.certificates_to_reconstruct_buffer.write().await;
+                let shares_verified = self.shares_verified.read().await;
+
+                let mut key_changed = Vec::new();
+                certificates_to_reconstruct_buffer.retain(|(digests, epoch, index)| {
+                    let mut digest_can_be_reconstructed = HashSet::new();
+                    let mut secret_can_be_reconstructed = Vec::new();
+                    let key = (*epoch, *index);
+
+                    if let Some(shares) = shares_verified.get(&key) {
+                        for (c, s) in shares.iter() {
+                            if s.len() >= threshold {
+                                let s: Vec<(PublicKey, Secret)> = s.iter().cloned().collect();
+                                secret_can_be_reconstructed.push((*c, s));
+                                digest_can_be_reconstructed.insert(*c);
+                            }
                         }
+                        return if &digest_can_be_reconstructed == digests {
+                            secrets_to_reconstruct.push((
+                                *epoch,
+                                *index,
+                                secret_can_be_reconstructed,
+                            ));
+                            key_changed.push(key);
+                            false
+                        } else {
+                            true
+                        };
                     }
-                },
-                Some(shares_from_others) = self.breeze_reconstruct_secret_receiver.recv() => {
-                    match shares_from_others.content {
-                        BreezeContent::Reconstruct(share) => {
-                            let key = (share.epoch, share.index);
-                            let shares_vec = self.shares_to_cumulate
-                                .entry(key)
-                                .or_insert_with(HashMap::new);
-                            for single_share in share.secrets {
-                                if !single_share.verify(){
-                                    continue;
+                    true
+                });
+                let mut reconstructed_epoch_wave = self.reconstructed_epoch_wave.write().await;
+                let mut shares_verified = self.shares_verified.write().await;
+                for key in key_changed {
+                    reconstructed_epoch_wave.push(key);
+                    shares_verified.remove(&key);
+                }
+
+                for (epoch, index, secret_set) in secrets_to_reconstruct {
+                    let mut cumulated_output = 0;
+                    for (_, shares) in secret_set {
+                        let mut ids = Vec::new();
+                        let mut values = Vec::new();
+                        for (pk, value) in shares {
+                            // let id = committee.get_id(&pk).unwrap();
+                            let id = self.committee.get_id(&pk).unwrap();
+                            ids.push(id);
+                            values.push(value);
+                        }
+                        cumulated_output += BreezeReconResult::interpolate(&ids, &values, q);
+                    }
+                    let recon_output = BreezeReconResult::new(cumulated_output);
+                    self.breeze_result_sender
+                        .send((epoch, index, recon_output.secret_to_number()))
+                        .await
+                        .expect("breeze_result_sender error to send");
+                }
+            } else {
+                break;
+            }
+            // tokio::select! {
+            //     Some(certificates_to_reconstruct) = self.breeze_recon_certificate_receiver.recv() => {
+            //         let key = (certificates_to_reconstruct.1, certificates_to_reconstruct.2);
+            //         if !self.reconstructed_epoch_wave.contains(&key) {
+            //             let exists = self.certificates_to_reconstruct_buffer.iter().any(|(_, e, w)| e == &certificates_to_reconstruct.1 && w == &certificates_to_reconstruct.2);
+            //             if !exists {
+            //                 self.certificates_to_reconstruct_buffer.push(certificates_to_reconstruct);
+            //             }
+            //         }
+            //     },
+            //     Some(shares_from_others) = self.breeze_reconstruct_secret_receiver.recv() => {
+            //         match shares_from_others.content {
+            //             BreezeContent::Reconstruct(share) => {
+            //                 let key = (share.epoch, share.index);
+            //                 let merkle_roots_received = self.merkle_roots_received.read().await;
+            //                 match merkle_roots_received.get(&share.epoch) {
+            //                     Some(roots) => {
+            //                         for ss in share.secrets.iter() {
+            //                             if roots.contains_key(&ss.dealer){
+            //                                 if true {
+            //                                     let mut write_lock = self.shares_verified.write().await;
+            //                                     let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+            //                                     let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+            //                                     temp2.insert((ss.dealer,ss.y));
+            //                                 }
+            //                             }else {
+            //                                 let mut write_lock = self.shares_unverified_yet.write().await;
+            //                                 let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+            //                                 let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+            //                                 temp2.insert((ss.dealer,ss.clone()));
+            //                             }
+            //                         }
+            //
+            //                     }
+            //                     None => {
+            //                         for ss in share.secrets.iter() {
+            //                             let mut write_lock = self.shares_unverified_yet.write().await;
+            //                                 let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+            //                                 let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+            //                                 temp2.insert((ss.dealer,ss.clone()));
+            //                         }
+            //                     }
+            //                 }
+            //             }
+            //             _ => {}
+            //         }
+            //     }
+            // }
+
+            // let committee = self.committee.read().await;
+            // let threshold = committee.authorities_fault_tolerance() + 1;
+
+            // let mut secrets_to_reconstruct = Vec::new();
+            // self.certificates_to_reconstruct_buffer.retain(|(digests, epoch, index)| {
+            //     let mut digest_can_be_reconstructed = HashSet::new();
+            //     let mut secret_can_be_reconstructed = Vec::new();
+            //     let key = (*epoch, *index);
+            //     if let Some(shares) = self.shares_verified.get(&key) {
+            //         for (c,s) in shares.iter() {
+            //             if s.len() >= threshold {
+            //                 let s: Vec<(PublicKey,Secret)> = s.iter().cloned().collect();
+            //                 secret_can_be_reconstructed.push((*c, s));
+            //                 digest_can_be_reconstructed.insert(*c);
+            //             }
+            //         }
+            //         return if &digest_can_be_reconstructed == digests {
+            //             secrets_to_reconstruct.push((*epoch, *index, secret_can_be_reconstructed));
+            //             self.reconstructed_epoch_wave.push(key);
+            //             self.shares_verified.remove(&key);
+            //             false
+            //         } else {
+            //             true
+            //         }
+            //     }
+            //     true
+            // });
+            //
+            // for (epoch, index, secret_set) in secrets_to_reconstruct {
+            //     let mut cumulated_output = 0;
+            //     for (_,shares) in secret_set {
+            //         let mut ids = Vec::new();
+            //         let mut values = Vec::new();
+            //         for (pk,value) in shares{
+            //             // let id = committee.get_id(&pk).unwrap();
+            //             let id = self.committee.get_id(&pk).unwrap();
+            //             ids.push(id);
+            //             values.push(value);
+            //         }
+            //         cumulated_output += BreezeReconResult::interpolate(&ids, &values);
+            //     }
+            //     let recon_output = BreezeReconResult::new(cumulated_output);
+            //     self.breeze_result_sender.send((epoch, index, recon_output.secret_to_number()))
+            //         .await
+            //         .expect("breeze_result_sender error to send");
+            // }
+        }
+    }
+
+    async fn merkle_watch_monitor(
+        mut merkle_watch_receiver: watch::Receiver<()>,
+        merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
+        shares_unverified_yet: Arc<
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+        >,
+        shares_verified: Arc<
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+        >,
+
+        shares_verified_watch_sender: watch::Sender<()>,
+    ) {
+        loop {
+            if merkle_watch_receiver.changed().await.is_ok() {
+                let merkle_roots_received = merkle_roots_received.read().await;
+                let mut shares_unverified_yet = shares_unverified_yet.write().await;
+                for ((epoch, index), secrets) in shares_unverified_yet.iter_mut() {
+                    match merkle_roots_received.get(&epoch) {
+                        Some(roots) => {
+                            for (digest, set) in secrets.iter() {
+                                for (pk,ss) in set.iter() {
+                                    if roots.contains_key(&pk) {
+                                        let rs = roots.get(&pk).unwrap();
+                                        if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[*index - 1],ss.total_party_num) {
+                                            let mut write_lock = shares_verified.write().await;
+                                            let temp = write_lock
+                                                .entry((*epoch, *index))
+                                                .or_insert(HashMap::new());
+                                            let temp2 =
+                                                temp.entry(*digest).or_insert(HashSet::new());
+                                            temp2.insert((*pk, ss.y));
+
+                                            shares_verified_watch_sender.send(()).unwrap();
+                                        }
+                                    }
                                 }
-                                let scalar_set = shares_vec
-                                    .entry(single_share.c)
-                                    .or_insert_with(HashSet::new);
-                                scalar_set.insert((shares_from_others.sender,single_share.y));
                             }
                         }
                         _ => {}
                     }
                 }
+            } else {
+                error!("merkle roots receiver notifier closed, exiting monitor");
+                break;
             }
+        }
+    }
 
-            // let committee = self.committee.read().await;
-            // let threshold = committee.authorities_fault_tolerance() + 1;
+    async fn certificate_share_monitor(
+        mut breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>, Epoch, usize)>,
+        reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>>,
+        certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>>,
+        mut breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
+        merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
+        shares_verified: Arc<
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+        >,
+        shares_unverified_yet: Arc<
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+        >,
 
-            let mut secrets_to_reconstruct = Vec::new();
-            self.certificates_to_reconstruct_buffer.retain(|(digests, epoch, index)| {
-                let mut digest_can_be_reconstructed = HashSet::new();
-                let mut secret_can_be_reconstructed = Vec::new();
-                let key = (*epoch, *index);
-                if let Some(shares) = self.shares_to_cumulate.get(&key) {
-                    for (c,s) in shares.iter() {
-                        if s.len() >= threshold {
-                            let s: Vec<(PublicKey,Secret)> = s.iter().cloned().collect();
-                            secret_can_be_reconstructed.push((*c, s));
-                            digest_can_be_reconstructed.insert(*c);
+        shares_verified_watch_sender: watch::Sender<()>,
+    ) {
+        loop {
+            tokio::select! {
+                Some(certificates_to_reconstruct) = breeze_recon_certificate_receiver.recv() => {
+                    let key = (certificates_to_reconstruct.1, certificates_to_reconstruct.2);
+                    if !reconstructed_epoch_wave.read().await.contains(&key) {
+                        let mut certificates_to_reconstruct_buffer = certificates_to_reconstruct_buffer.write().await;
+                        let exists = certificates_to_reconstruct_buffer.iter().any(|(_, e, w)| e == &certificates_to_reconstruct.1 && w == &certificates_to_reconstruct.2);
+                        if !exists {
+                            certificates_to_reconstruct_buffer.push(certificates_to_reconstruct);
                         }
                     }
-                    return if &digest_can_be_reconstructed == digests {
-                        secrets_to_reconstruct.push((*epoch, *index, secret_can_be_reconstructed));
-                        self.reconstructed_epoch_wave.push(key);
-                        self.shares_to_cumulate.remove(&key);
-                        false
-                    } else {
-                        true
-                    }
-                }
-                true
-            });
+                },
+                Some(shares_from_others) = breeze_reconstruct_secret_receiver.recv() => {
+                    match shares_from_others.content {
+                        BreezeContent::Reconstruct(share) => {
+                            let max_index = *MAX_INDEX.get().unwrap();
+                            if share.index > max_index{
+                                continue;
+                            }
+                            // let key = (share.epoch, share.index);
+                            let merkle_roots_received = merkle_roots_received.read().await;
+                            match merkle_roots_received.get(&share.epoch) {
+                                Some(roots) => {
+                                    for ss in share.secrets.iter() {
+                                        if roots.contains_key(&ss.dealer){
+                                            let rs = roots.get(&ss.dealer).unwrap();
+                                            if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[share.index - 1],ss.total_party_num) {
+                                                let mut write_lock = shares_verified.write().await;
+                                                let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+                                                let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+                                                temp2.insert((ss.dealer,ss.y));
 
-            for (epoch, index, secret_set) in secrets_to_reconstruct {
-                let mut cumulated_output = 0;
-                for (_,shares) in secret_set {
-                    let mut ids = Vec::new();
-                    let mut values = Vec::new();
-                    for (pk,value) in shares{
-                        // let id = committee.get_id(&pk).unwrap();
-                        let id = self.committee.get_id(&pk).unwrap();
-                        ids.push(id);
-                        values.push(value);
+                                                shares_verified_watch_sender.send(()).unwrap();
+                                            }
+                                        }else {
+                                            let mut write_lock = shares_unverified_yet.write().await;
+                                            let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+                                            let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+                                            temp2.insert((ss.dealer,ss.clone()));
+                                        }
+                                    }
+
+                                }
+                                None => {
+                                    for ss in share.secrets.iter() {
+                                        let mut write_lock = shares_unverified_yet.write().await;
+                                            let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+                                            let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+                                            temp2.insert((ss.dealer,ss.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
-                    cumulated_output += BreezeReconResult::interpolate(&ids, &values);
                 }
-                let recon_output = BreezeReconResult::new(cumulated_output);
-                self.breeze_result_sender.send((epoch, index, recon_output.secret_to_number()))
-                    .await
-                    .expect("breeze_result_sender error to send");
             }
         }
     }

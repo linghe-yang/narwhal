@@ -1,8 +1,9 @@
 
 use curve25519_dalek::{RistrettoPoint, Scalar};
+use nalgebra::DMatrix;
 use serde::{Deserialize, Serialize};
 use crypto::{Digest, PublicKey, Signature};
-use model::breeze_universal::BreezeCertificate;
+use model::breeze_universal::{BreezeCertificate, CommonReferenceString};
 use model::types_and_const::Epoch;
 
 #[cfg(feature = "pq")]
@@ -11,6 +12,45 @@ use model::types_and_const::ZqMod;
 use crate::breeze_pq::zq_int::ZqInt;
 #[cfg(feature = "pq")]
 use nalgebra::DVector;
+
+#[cfg(feature = "pq")]
+pub struct PQCrs{
+    pub a: DMatrix<ZqInt>,
+    pub q: ZqMod,
+    pub log_q: usize,
+    pub g: usize,
+    pub n: usize,
+    pub kappa: usize,
+    pub r: usize,
+    pub ell: usize
+}
+
+impl PQCrs {
+    pub fn from(crs: &CommonReferenceString) -> Self {
+        let a = &crs.a;
+        let nrows = a.len();
+        assert!(nrows > 0, "Matrix must have at least one row");
+        let ncols = a[0].len();
+        assert!(ncols > 0, "Matrix must have at least one column");
+        assert!(a.iter().all(|row| row.len() == ncols), "All rows must have the same length");
+        let flat_data: Vec<ZqInt> = a.into_iter()
+            .flat_map(|row| {
+                row.into_iter()
+                    .map(|val| ZqInt::new(*val, crs.q))
+            })
+            .collect();
+        Self {
+            a: DMatrix::from_vec(nrows, ncols, flat_data),
+            q: crs.q,
+            log_q: crs.log_q,
+            g: crs.g,
+            n: crs.n,
+            kappa: crs.kappa,
+            r: crs.r,
+            ell: crs.ell,
+        }
+    }
+}
 
 #[cfg(not(feature = "pq"))]
 #[derive(Debug)]
@@ -38,6 +78,7 @@ pub struct Share{
     pub merkle_proofs: Vec<Vec<u8>>,
     pub eval_proof: Vec<(Vec<ZqMod>, Vec<ZqMod>)>,
     pub epoch: Epoch,
+    pub total_party_num: usize,
 }
 #[cfg(not(feature = "pq"))]
 #[derive(Debug, Clone, Serialize, Deserialize,PartialEq)]
@@ -47,12 +88,15 @@ pub struct SingleShare{
 }
 
 #[cfg(feature = "pq")]
-#[derive(Debug, Clone, Serialize, Deserialize,PartialEq)]
+#[derive(Eq, Hash, PartialEq, Debug, Clone, Serialize, Deserialize,)]
 pub struct SingleShare{
+    pub dealer: PublicKey,
     pub c: Digest,
     pub y: ZqMod,
     pub merkle_proof: (usize,Vec<u8>),
+    pub total_party_num: usize,
 }
+#[cfg(not(feature = "pq"))]
 impl SingleShare{
     pub fn verify(&self) -> bool {
         //TODO: The verification method in original Breeze seems to be unsafe
@@ -107,13 +151,13 @@ impl ProofUnit {
 
         (y_vec, v_vec)
     }
-    pub fn from_residue_vecs(residues: (Vec<ZqMod>, Vec<ZqMod>), modulus: ZqMod) -> Self {
+    pub fn from_residue_vecs(residues: &(Vec<ZqMod>, Vec<ZqMod>), modulus: ZqMod) -> Self {
         let (y_residues, v_residues) = residues;
         let y: DVector<ZqInt> = DVector::from_vec(
-            y_residues.into_iter().map(|r| ZqInt::new(r, modulus)).collect()
+            y_residues.into_iter().map(|r| ZqInt::new(*r, modulus)).collect()
         );
         let v: DVector<ZqInt> = DVector::from_vec(
-            v_residues.into_iter().map(|r| ZqInt::new(r, modulus)).collect()
+            v_residues.into_iter().map(|r| ZqInt::new(*r, modulus)).collect()
         );
         ProofUnit { y, v }
     }

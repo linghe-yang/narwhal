@@ -7,18 +7,17 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::breeze_universal::CommonReferenceString;
 use model::types_and_const::{Epoch, Id, BEACON_PER_EPOCH, MAX_EPOCH};
 use network::{CancelHandler, ReliableSender};
 use crate::breeze_pq::breeze_share_dealer::Shares;
-use crate::breeze_structs::BreezeMessage;
+use crate::breeze_structs::{BreezeMessage, PQCrs};
 
 pub struct BreezeShare{
     node_id: (PublicKey,Id),
     committee: Arc<RwLock<Committee>>,
     breeze_share_cmd_receiver: Receiver<Epoch>,
     network: ReliableSender,
-    common_reference_string: Arc<RwLock<CommonReferenceString>>,
+    common_reference_string: Arc<RwLock<PQCrs>>,
     my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>,
     cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
     merkle_cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
@@ -30,7 +29,7 @@ impl BreezeShare {
         committee: Arc<RwLock<Committee>>,
         breeze_share_cmd_receiver: Receiver<Epoch>,
         network: ReliableSender,
-        common_reference_string: Arc<RwLock<CommonReferenceString>>,
+        common_reference_string: Arc<RwLock<PQCrs>>,
         my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>
     ) {
         tokio::spawn(async move {

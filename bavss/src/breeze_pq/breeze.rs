@@ -10,12 +10,12 @@ use std::net::SocketAddr;
 use network::{Receiver as NetworkReceiver, ReliableSender};
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 use config::{Committee, KeyPair};
 use model::breeze_universal::{BreezeCertificate, BreezeReconRequest, CommonReferenceString};
 use model::types_and_const::{Epoch, Id, RandomNum, CHANNEL_CAPACITY};
 use crypto::{Digest, PublicKey};
-use crate::breeze_structs::{BreezeContent, BreezeMessage};
+use crate::breeze_structs::{BreezeMessage, PQCrs};
 
 pub struct Breeze;
 
@@ -31,7 +31,7 @@ impl Breeze {
         breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
         breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
 
-        common_reference_string: Arc<RwLock<CommonReferenceString>>,
+        common_reference_string: CommonReferenceString,
     ) {
         let pk = keypair.name;
         let sk = keypair.secret;
@@ -51,7 +51,9 @@ impl Breeze {
         
         let my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>> = Arc::new(RwLock::new(HashMap::new()));
         let merkle_roots_received: Arc<RwLock<HashMap<Epoch,HashMap<PublicKey,Vec<Digest>>>>> = Arc::new(RwLock::new(HashMap::new()));
+        let (merkle_watch_sender, merkle_watch_receiver) = watch::channel(());
         
+        let common_reference_string = Arc::new(RwLock::new(PQCrs::from(&common_reference_string)));
         
         NetworkReceiver::spawn(
             address,
@@ -71,7 +73,10 @@ impl Breeze {
             committee.clone(),
             breeze_recon_certificate_receiver,
             breeze_reconstruct_secret_receiver,
-            breeze_result_sender
+            Arc::clone(&merkle_roots_received),
+            merkle_watch_receiver,
+            breeze_result_sender,
+            Arc::clone(&common_reference_string),
         );
 
         //reconstruct phase
@@ -101,6 +106,7 @@ impl Breeze {
             breeze_share_receiver,
             breeze_merkle_roots_receiver,
             merkle_roots_received,
+            merkle_watch_sender,
             ReliableSender::new(),
             Arc::clone(&valid_shares),
             Arc::clone(&common_reference_string),

@@ -1,5 +1,5 @@
 
-use model::types_and_const::{Id, RandomNum};
+use model::types_and_const::{Id, RandomNum, ZqMod};
 use crate::Secret;
 
 pub struct BreezeReconResult{
@@ -16,72 +16,70 @@ impl BreezeReconResult {
             // index
         }
     }
-    #[cfg(not(feature = "pq"))]
-    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>) -> Secret {
-        let evaluate_points = Self::generate_evaluation_points_n(evaluate_ids);
-        Self::lagrange_interpolation_at_zero(&evaluate_points,shares)
+    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>, q: ZqMod) -> Secret {
+        let evaluate_points = generate_evaluation_points_n(evaluate_ids);
+        Self::lagrange_interpolation_at_zero(&evaluate_points,shares, q)
     }
-    #[cfg(feature = "pq")]
-    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>) -> Secret {
-        // let evaluate_points = Self::generate_evaluation_points_n(evaluate_ids);
-        // Self::lagrange_interpolation_at_zero(&evaluate_points,shares)
-        0
-    }
-
-    // 计算拉格朗日基多项式 l_i(0) 的值
-    // fn lagrange_basis_at_zero(x_points: &Vec<Scalar>, i: usize) -> Scalar {
-    //     let mut numerator = Scalar::ONE;
-    //     let mut denominator = Scalar::ONE;
-    //     let xi = x_points[i];
-    // 
-    //     for (j, &xj) in x_points.iter().enumerate() {
-    //         if j != i {
-    //             numerator *= Scalar::ZERO - xj; // 分子：(0 - x_j)
-    //             denominator *= xi - xj;         // 分母：(x_i - x_j)
-    //         }
-    //     }
-    // 
-    //     numerator * denominator.invert() // l_i(0) = numerator / denominator
-    // }
     
-    #[cfg(not(feature = "pq"))]
-    pub fn secret_to_number(&self) -> RandomNum {
-        let bytes = self.value.to_bytes(); // 获取底层 [u8; 32]
-        u64::from_le_bytes(bytes[..8].try_into().unwrap()) // 取低8字节转为u64
-    }
-    #[cfg(feature = "pq")]
     pub fn secret_to_number(&self) -> RandomNum {
         0
     }
 
     // 根据 t+1 个点计算 f(0)
-    #[cfg(not(feature = "pq"))]
-    fn lagrange_interpolation_at_zero(points: &Vec<Scalar>, values: &Vec<Scalar>) -> Scalar {
-        let mut result = Scalar::ZERO;
+    fn lagrange_interpolation_at_zero(points: &Vec<ZqMod>, values: &Vec<ZqMod>, q: ZqMod) -> ZqMod {
+        let n = points.len();
+        let mut result = 0;
 
-        for i in 0..points.len() {
-            let mut term = values[i];
+        for i in 0..n {
+            let xi = points[i];
+            let yi = values[i];
 
-            // 计算拉格朗日基函数在x=0处的值
-            for j in 0..points.len() {
+            // 计算拉格朗日基函数 L_i(0) = Π_{j ≠ i} (0 - x_j) / (x_i - x_j)
+            let mut term = yi;
+            for j in 0..n {
                 if i != j {
-                    // L_i(0) = ∏(0-x_j)/(x_i-x_j) = ∏(-x_j)/(x_i-x_j)
-                    term *= -points[j] * (points[i] - points[j]).invert();
+                    let xj = points[j];
+                    // 分子: 0 - x_j = -x_j
+                    let numerator = (q - xj) % q; // 模 q 下的 -x_j
+                    // 分母: x_i - x_j
+                    let denominator = (xi + q - xj) % q; // 确保正数
+                    // 计算模逆
+                    let denominator_inv = mod_inverse(denominator, q);
+                    // term *= numerator * denominator_inv (模 q)
+                    term = (term * numerator) % q;
+                    term = (term * denominator_inv) % q;
                 }
             }
-            result += term;
+            // result += y_i * L_i(0)
+            result = (result + term) % q;
         }
 
         result
     }
-    #[cfg(not(feature = "pq"))]
-    pub fn generate_evaluation_points_n(ids: &Vec<Id>) -> Vec<Scalar> {
-        let mut res: Vec<Scalar> = Vec::new();
 
-        for id in ids {
-            let base = Scalar::from(*id as u64);
-            res.push(base);
-        }
-        res
+}
+fn generate_evaluation_points_n(ids: &Vec<Id>) -> Vec<ZqMod> {
+    let mut res: Vec<ZqMod> = Vec::new();
+
+    for id in ids {
+        let base = *id as ZqMod;
+        res.push(base);
+    }
+    res
+}
+fn mod_inverse(a: ZqMod, q: ZqMod) -> ZqMod {
+    let (g, x, _) = extended_gcd(a as i128, q as i128);
+    if g != 1 {
+        panic!("Modular inverse does not exist");
+    }
+    ((x % (q as i128) + q as i128) % (q as i128)) as u128
+}
+
+fn extended_gcd(a: i128, b: i128) -> (i128, i128, i128) {
+    if a == 0 {
+        (b, 0, 1)
+    } else {
+        let (g, x, y) = extended_gcd(b % a, a);
+        (g, y - (b / a) * x, x)
     }
 }

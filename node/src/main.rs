@@ -10,11 +10,13 @@ use consensus::Tusk;
 use drb_coordinator::coordinator::Coordinator;
 use env_logger::Env;
 use model::types_and_const::{WorkerId, BEACON_PER_EPOCH, CHANNEL_CAPACITY, MAX_EPOCH, MAX_WAVE};
+#[cfg(feature = "pq")]
+use model::types_and_const::MAX_INDEX;
 use primary::{Certificate, Primary};
-use std::sync::Arc;
+// use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::sync::RwLock;
+// use tokio::sync::RwLock;
 use bavss::Breeze;
 use secondary_bft::init_bft::InitBFT;
 #[cfg(feature = "dolphin")]
@@ -139,8 +141,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             let crs_file = sub_matches.value_of("crs").unwrap();
             let crs =
                 CommonReferenceString::import(crs_file).context("Failed to load the crs for breeze")?;
-
-            let crs = Arc::new(RwLock::new(crs));
+            #[cfg(feature = "pq")]
+            MAX_INDEX.set(crs.g * (BEACON_PER_EPOCH.get().unwrap() + MAX_EPOCH.get().unwrap()) as usize).unwrap();
+            // let crs = Arc::new(RwLock::new(crs));
             let mut address = committee.breeze_address(&keypair.name)?;
             address.set_ip("0.0.0.0".parse()?);
             let id = committee.get_id(&keypair.name).unwrap();

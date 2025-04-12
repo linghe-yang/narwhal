@@ -1,39 +1,83 @@
-
-use rayon::iter::ParallelIterator;
-use std::time::Instant;
-use log::error;
+use crate::breeze_pq::calculation::{generate_f_vector, generate_fiat_shamir_challenge_matrix, generate_polynomial_evaluation, generate_proof, generate_t, generate_v, generate_x_vectors, verify_proofs};
 use crate::breeze_pq::polynomial::Polynomial;
 use crate::breeze_pq::zq_int::ZqInt;
+use crate::breeze_structs::{PQCrs, ProofUnit, Share};
+use crate::merkletree::{generate_merkle_tree, verify_merkle_proof};
 use crypto::{Digest, PublicKey};
-use model::breeze_universal::CommonReferenceString;
+use log::error;
 use model::types_and_const::{Epoch, Id, ZqMod};
 use nalgebra::DVector;
+use rayon::iter::ParallelIterator;
 use rayon::prelude::ParallelBridge;
 use sha2::{Digest as ShaDigest, Sha256};
-use crate::breeze_pq::calculation::{generate_a_matrix, generate_f_vector, generate_fiat_shamir_challenge_matrix, generate_polynomial_evaluation, generate_proof, generate_t, generate_v, generate_x_vectors};
-use crate::breeze_structs::{ProofUnit, Share};
-use crate::merkletree::generate_merkle_tree;
+use std::time::Instant;
 
-pub struct Shares (pub(crate) Vec<(Share, PublicKey)>);
+pub struct Shares(pub(crate) Vec<(Share, PublicKey)>);
 impl Shares {
-    pub fn get_c_ref(&self) -> &Digest{
+    pub fn get_c_ref(&self) -> &Digest {
         &self.0[0].0.c
     }
     pub fn get_shares_ref(&self) -> &Vec<(Share, PublicKey)> {
         &self.0
     }
-    pub fn verify_shares(_crs: &CommonReferenceString, _node_id: Id, _t: usize, _share: &Share) -> bool {
-        true
+    pub fn verify_shares(
+        crs: &PQCrs,
+        share: &Share,
+        id: Id
+    ) -> bool {
+        let proofs: Vec<_> = share.eval_proof.iter().map(|p| ProofUnit::from_residue_vecs(p, crs.q)).collect();
+        let t = vec_to_dvec(&share.t, crs.q);
+        let u = vec_to_dvec(&share.y_k, crs.q);
+        let x = generate_x_vectors(ZqInt::new(id as ZqMod, crs.q), crs.ell, crs.r);
+        verify_proofs(&proofs, &crs.a, t, u, x, crs.ell, crs.r, crs.kappa, crs.n, crs.q, crs.log_q)
     }
-    pub fn verify_merkles(share: &Share, roots: &Vec<Digest>) -> bool {
-        true
+
+
+    pub fn verify_merkle_batch(id: usize, share: &Share, roots: &Vec<Digest>) -> bool {
+        let mut flag = true;
+        for (idx, x) in share.y_k.iter().enumerate() {
+            let mut hasher = Sha256::new();
+            hasher.update(x.to_be_bytes());
+            let leaf = hasher.finalize().to_vec();
+            match verify_merkle_proof(
+                &leaf,
+                (id, share.merkle_proofs[idx].clone()),
+                roots[idx],
+                share.total_party_num,
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    flag = false;
+                    break;
+                }
+            }
+        }
+        flag
+    }
+    pub fn verify_merkle(y: ZqMod, proof: (usize,Vec<u8>), root: Digest, total_leaves_count: usize) -> bool {
+        let mut hasher = Sha256::new();
+        hasher.update(y.to_be_bytes());
+        let leaf = hasher.finalize().to_vec();
+        match verify_merkle_proof(
+            &leaf,
+            proof,
+            root,
+            total_leaves_count
+        ) {
+            Ok(_) => {
+                true
+            }
+            Err(_) => {
+                false
+            }
+        }
     }
     pub fn new(
         batch_size: usize,
         epoch: Epoch,
         ids: Vec<(PublicKey, Id)>,
         f: usize,
-        crs: &CommonReferenceString,
+        crs: &PQCrs,
     ) -> (Self, Vec<Digest>) {
         let g = crs.g;
         let q = crs.q;
@@ -48,11 +92,11 @@ impl Shares {
             polynomials.push(Polynomial::new(f, q));
         }
         let f = generate_f_vector(r, ell, kappa, n, q, polynomials);
-        let a = generate_a_matrix(&crs.a, q);
+        let a = &crs.a;
         let mut s_vectors: Vec<Option<DVector<ZqInt>>> = vec![None; ell + 1];
 
         let start = Instant::now();
-        let t = generate_t(&f, &mut s_vectors, r, ell, kappa, n, q,log_q, &a);
+        let t = generate_t(&f, &mut s_vectors, r, ell, kappa, n, q, log_q, &a);
         println!("承诺生成时间: {:?}", start.elapsed());
 
         let s_vectors: Vec<DVector<ZqInt>> = s_vectors
@@ -104,44 +148,58 @@ impl Shares {
             .chunks(chunk_size)
             .par_bridge()
             .flat_map(|chunk| {
-                chunk.iter().map(|&(pk, id)| {
-                    let x = generate_x_vectors(ZqInt::new(id as ZqMod, q), ell, r);
-                    let u = generate_polynomial_evaluation(f.clone(), &x, r, ell, ell, kappa, n, q);
+                chunk
+                    .iter()
+                    .map(|&(pk, id)| {
+                        let x = generate_x_vectors(ZqInt::new(id as ZqMod, q), ell, r);
+                        let u =
+                            generate_polynomial_evaluation(f.clone(), &x, r, ell, ell, kappa, n, q);
 
-                    let mut v0 = generate_v(f.clone(), &x, r, ell, ell, 1, kappa, n, q);
-                    let c = generate_fiat_shamir_challenge_matrix(&t, &u, &x, &s_vectors[0], &v0, r, kappa, q);
-                    let mut proof: Vec<ProofUnit> = Vec::new();
-                    proof.push(ProofUnit::new(s_vectors[0].clone(), v0.clone()));
-                    generate_proof(
-                        &mut proof,
-                        &mut x.clone(),
-                        &mut f.clone(),
-                        &mut s_vectors.clone(),
-                        &mut s_vectors[0].clone(),
-                        &mut v0,
-                        c,
-                        ell,
-                        1,
-                        r,
-                        n,
-                        kappa,
-                        q,
-                        log_q
-                    );
-                    let share = Share {
-                        t: t_vec.clone(),
-                        c: t_vec_hash.clone(),
-                        y_k: dvec_zint_to_vec_int(&u),
-                        merkle_proofs: Vec::default(),
-                        eval_proof: proof_unit_to_vec(&proof),
-                        epoch,
-                    };
-                    (share, pk)
-                }).collect::<Vec<_>>() // 在每个块内串行处理
+                        let mut v0 = generate_v(f.clone(), &x, r, ell, ell, 1, kappa, n, q);
+                        let c = generate_fiat_shamir_challenge_matrix(
+                            &t,
+                            &u,
+                            &x,
+                            &s_vectors[0],
+                            &v0,
+                            r,
+                            kappa,
+                            q,
+                        );
+                        let mut proof: Vec<ProofUnit> = Vec::new();
+                        proof.push(ProofUnit::new(s_vectors[0].clone(), v0.clone()));
+                        generate_proof(
+                            &mut proof,
+                            &mut x.clone(),
+                            &mut f.clone(),
+                            &mut s_vectors.clone(),
+                            &mut s_vectors[0].clone(),
+                            &mut v0,
+                            c,
+                            ell,
+                            1,
+                            r,
+                            n,
+                            kappa,
+                            q,
+                            log_q,
+                        );
+                        let share = Share {
+                            t: t_vec.clone(),
+                            c: t_vec_hash.clone(),
+                            y_k: dvec_zint_to_vec_int(&u),
+                            merkle_proofs: Vec::default(),
+                            eval_proof: proof_unit_to_vec(&proof),
+                            epoch,
+                            total_party_num: ids.len(),
+                        };
+                        (share, pk)
+                    })
+                    .collect::<Vec<_>>() // 在每个块内串行处理
             })
             .collect();
 
-        println!("分片证明时间: {:?}",start.elapsed());
+        println!("分片证明时间: {:?}", start.elapsed());
         let (roots, proofs) = generate_merkle_proofs(&shares);
         for (share, proof) in shares.iter_mut().zip(proofs.into_iter()) {
             // proof 是 (usize, Vec<Vec<u8>>)，我们需要第二个元素
@@ -159,20 +217,24 @@ fn proof_unit_to_vec(v: &Vec<ProofUnit>) -> Vec<(Vec<ZqMod>, Vec<ZqMod>)> {
     let res: Vec<_> = v.iter().map(|p| p.to_residue_vecs()).collect();
     res
 }
-fn generate_merkle_proofs(shares: &Vec<(Share,PublicKey)>) -> (Vec<Digest>, Vec<(usize, Vec<Vec<u8>>)>){
+fn generate_merkle_proofs(
+    shares: &Vec<(Share, PublicKey)>,
+) -> (Vec<Digest>, Vec<(usize, Vec<Vec<u8>>)>) {
     let share_vec: Vec<_> = shares.iter().map(|s| &s.0).collect();
     let mut roots = Vec::new();
     let mut proofs = Vec::new();
-    for idx in 0..share_vec[0].y_k.len(){
+    for idx in 0..share_vec[0].y_k.len() {
         let mut layer = Vec::new();
-        for share in share_vec.iter(){
+        for share in share_vec.iter() {
             layer.push(share.y_k[idx]);
         }
         let leaves = hash_u128_vec_to_bytes_vec(layer);
-        let (root,merkle_proof) = match generate_merkle_tree(leaves) {
+        let (root, merkle_proof) = match generate_merkle_tree(leaves) {
             Ok(res) => res,
-            Err(_) => { error!("failed to generate merkle tree of layer {}", idx);
-            continue; }
+            Err(_) => {
+                error!("failed to generate merkle tree of layer {}", idx);
+                continue;
+            }
         };
         roots.push(root);
         proofs.push(merkle_proof);
@@ -241,4 +303,8 @@ fn transpose_merkle_proofs(matrix: Vec<Vec<(usize, Vec<u8>)>>) -> Vec<(usize, Ve
     result.sort_by(|a, b| a.0.cmp(&b.0));
 
     result
+}
+
+fn vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod) -> DVector<ZqInt> {
+    DVector::from_vec(vec.iter().map(|&ele| ZqInt::new(ele, q)).collect())
 }

@@ -63,20 +63,20 @@ pub fn generate_f_vector(
     }
     DVector::from_vec(coeffs)
 }
-pub fn generate_a_matrix(a: &Vec<Vec<ZqMod>>, q: ZqMod) -> DMatrix<ZqInt> {
-    let nrows = a.len();
-    assert!(nrows > 0, "Matrix must have at least one row");
-    let ncols = a[0].len();
-    assert!(ncols > 0, "Matrix must have at least one column");
-    assert!(a.iter().all(|row| row.len() == ncols), "All rows must have the same length");
-    let flat_data: Vec<ZqInt> = a.into_iter()
-        .flat_map(|row| {
-            row.into_iter()
-                .map(|val| ZqInt::new(*val, q))
-        })
-        .collect();
-    DMatrix::from_vec(nrows, ncols, flat_data)
-}
+// pub fn generate_a_matrix(a: &Vec<Vec<ZqMod>>, q: ZqMod) -> DMatrix<ZqInt> {
+//     let nrows = a.len();
+//     assert!(nrows > 0, "Matrix must have at least one row");
+//     let ncols = a[0].len();
+//     assert!(ncols > 0, "Matrix must have at least one column");
+//     assert!(a.iter().all(|row| row.len() == ncols), "All rows must have the same length");
+//     let flat_data: Vec<ZqInt> = a.into_iter()
+//         .flat_map(|row| {
+//             row.into_iter()
+//                 .map(|val| ZqInt::new(*val, q))
+//         })
+//         .collect();
+//     DMatrix::from_vec(nrows, ncols, flat_data)
+// }
 pub fn generate_t(
     f: &DVector<ZqInt>,
     s_vectors: &mut Vec<Option<DVector<ZqInt>>>,
@@ -349,6 +349,50 @@ pub fn power_mod(x: ZqInt, n: usize, q: ZqMod) -> ZqInt {
     }
     result
 }
+
+pub fn verify_proofs(
+    proofs: &Vec<ProofUnit>,
+    a: &DMatrix<ZqInt>,
+    t: DVector<ZqInt>,
+    u: DVector<ZqInt>,
+    mut x: Vec<DVector<ZqInt>>,
+    ell:usize,
+    r: usize,
+    kappa: usize,
+    n: usize,
+    q: ZqMod,
+    log_q: usize,
+) -> bool{
+    let zero = ZqInt::new(0,q);
+    let one = ZqInt::new(1,q);
+    let left = i_kron_a_dot_s(&a, &proofs[0].y, kappa, &zero, &one);
+    assert_eq!(left,t);
+    let left = i_kron_vec_dot_vec(&x[ell], &proofs[0].v, kappa * n, q);
+    assert_eq!(left,u);
+    if infinity_norm(&proofs[0].y) as usize > (r*kappa).pow(0u32) {
+        panic!("y_{}' norm is too large",0);
+    }
+    println!("verify success for tree depth: {}",0);
+    let mut c = generate_fiat_shamir_challenge_matrix(&t, &u, &x, &proofs[0].y, &proofs[0].v, r, kappa, q);
+    for i in 1..=ell {
+        let left = i_kron_a_dot_s(&a, &proofs[i].y, kappa, &zero, &one);
+        let tj_plus_1 = c_kron_g_dot_y(&c, &proofs[i-1].y, n, q, log_q);
+        assert_eq!(left,tj_plus_1);
+        let left = i_kron_vec_dot_vec(&x[ell-i], &proofs[i].v, kappa * n, q);
+        let uj_plus_1 = c_kron_i_dot_v(&c, &proofs[i-1].v, n, q);
+        assert_eq!(left,uj_plus_1);
+        if infinity_norm(&proofs[i].y) as usize > (r*kappa).pow(i as u32) {
+            panic!("y_{}' norm is too large",i);
+        }
+
+        x.truncate(x.len() - 1);
+        c = generate_fiat_shamir_challenge_matrix(&tj_plus_1, &uj_plus_1, &x, &proofs[i].y, &proofs[i].v, r, kappa, q);
+        println!("verify success for tree depth: {}",i);
+    }
+    true
+}
+
+
 pub fn dvector_zeros(m: usize, modulus: ZqMod) -> DVector<ZqInt> {
     let zeros = vec![ZqInt::new(0, modulus); m];
     DVector::from_vec(zeros)

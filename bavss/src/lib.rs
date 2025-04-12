@@ -22,14 +22,16 @@ mod breeze_structs;
 #[cfg(feature = "pq")]
 #[cfg(test)]
 mod test {
+    use nalgebra::DMatrix;
     use crate::breeze_pq::breeze_share_dealer::Shares;
     use crypto::PublicKey;
-    use model::breeze_universal::CommonReferenceString;
     use model::types_and_const::{Id, ZqMod};
     use num_bigint::{BigUint, RandBigInt, ToBigUint};
     use num_prime::nt_funcs::is_prime;
     use num_traits::{One, ToPrimitive, Zero};
     use rand::Rng;
+    use crate::breeze_pq::zq_int::ZqInt;
+    use crate::breeze_structs::PQCrs;
 
     #[test]
     fn test_share() {
@@ -58,13 +60,25 @@ mod test {
         q: ZqMod,
         log_q: usize,
         r: usize,
-    ) -> CommonReferenceString {
+    ) -> PQCrs {
         let mut rng = rand::thread_rng();
         let a = (0..n)
             .map(|_| (0..m).map(|_| rng.gen_range(0..q)).collect::<Vec<ZqMod>>())
             .collect::<Vec<Vec<ZqMod>>>();
-        CommonReferenceString {
-            a,
+        let nrows = a.len();
+        assert!(nrows > 0, "Matrix must have at least one row");
+        let ncols = a[0].len();
+        assert!(ncols > 0, "Matrix must have at least one column");
+        assert!(a.iter().all(|row| row.len() == ncols), "All rows must have the same length");
+        let flat_data: Vec<ZqInt> = a.into_iter()
+            .flat_map(|row| {
+                row.into_iter()
+                    .map(|val| ZqInt::new(val, q))
+            })
+            .collect();
+        
+        PQCrs {
+            a: DMatrix::from_vec(nrows, ncols, flat_data),
             q,
             log_q,
             g: 4,

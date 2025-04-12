@@ -14,6 +14,8 @@ pub type ZqMod = u128;
 pub static BEACON_PER_EPOCH: OnceLock<u64> = OnceLock::new();
 pub static MAX_WAVE: OnceLock<u64> = OnceLock::new();
 pub static MAX_EPOCH: OnceLock<u64> = OnceLock::new();
+#[cfg(feature = "pq")]
+pub static MAX_INDEX: OnceLock<usize> = OnceLock::new();
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;

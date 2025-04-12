@@ -63,15 +63,15 @@ impl BreezeReconstruct {
                         None => continue, // 如果 epoch 不存在，返回空向量
                     };
                     let my_secrets_to_broadcast: Vec<SingleShare> = epoch_shares
-                        .values()
-                        .filter(|share| message.c.contains(&share.c))
-                        .map(|share|{
-                            SingleShare{
-                                c: share.c,
-                                y: share.y_k[message.index],
-                                merkle_proof: (self.node_id.1,share.merkle_proofs[message.index].clone())
-                            }
-                        }) // 克隆 Share 以返回拥有所有权的数据
+                        .iter() // 遍历键值对
+                        .filter(|(_pk, share)| message.c.contains(&share.c)) // 过滤 c 在 message.c 中
+                        .map(|(pk, share)| SingleShare {
+                            dealer: *pk,
+                            c: share.c,
+                            y: share.y_k[message.index].clone(),
+                            merkle_proof: (self.node_id.1,share.merkle_proofs[message.index].clone()),
+                            total_party_num: share.total_party_num,
+                        })
                         .collect();
                     
                     
