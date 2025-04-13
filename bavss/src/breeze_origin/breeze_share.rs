@@ -60,25 +60,24 @@ impl BreezeShare {
                     let shares = Shares::new(batch_size as usize, epoch, ids, fault_tolerance, &crs);
                     
                     let mut share_map_to_addresses: HashMap<SocketAddr, Bytes> = HashMap::new();
-                    let c = shares.get_c_ref();
+                    let c = shares.get_c();
                     // 遍历 share_map.value 中的每个 (id, shares) 对
-                    for (share, pk) in shares.get_shares_ref() {
+                    for (share, pk) in shares.0 {
                         // 通过 id 获取对应的 address
-                        if let Ok(address) = self.committee.read().await.breeze_address(&pk) {
+                        if let Ok(address) = committee.breeze_address(&pk) {
                             // 将 shares 插入到新的 HashMap 中，以 address 作为 key
-                            let message = BreezeMessage::new_share_message(self.node_id.0, share.clone());
+                            let message = BreezeMessage::new_share_message(self.node_id.0, share);
                             let bytes = bincode::serialize(&message).expect("Failed to serialize shares in BreezeShare");
                             share_map_to_addresses.insert(address, Bytes::from(bytes));
                         }
                     }
                     let mut my_dealer_shares = self.my_dealer_shares.write().await;
-                    my_dealer_shares.insert(epoch, *c);
+                    my_dealer_shares.insert(epoch, c);
                     let handlers = self.network.dispatch_to_addresses(share_map_to_addresses).await;
                     self.cancel_handlers
                         .entry(epoch)
                         .or_insert_with(Vec::new)
                         .extend(handlers);
-                    info!("Breeze share successfully completed");
                 }
             }
         }

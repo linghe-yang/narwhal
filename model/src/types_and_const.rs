@@ -59,8 +59,19 @@ pub fn get_round_by_epoch_wave(epoch: Epoch, wave: Wave) -> Round {
     epoch_base + wave_offset
 }
 
+pub fn round_to_epoch_index(round: Round, max_epoch: u64) -> (Epoch, usize) {
+    assert!(round > 0, "round must be positive");
+    assert!(max_epoch > 0, "max_epoch must be positive");
 
-pub fn dolphin_round_to_epoch_index(round: Round, max_epoch: u64) -> (Epoch, usize) {
+    let rounds_per_epoch = 2 * max_epoch;
+    let epoch = (round - 1) / rounds_per_epoch + 1;
+    let index = (round - 1) % rounds_per_epoch + 1;
+
+    (epoch, index as usize)
+}
+
+
+pub fn leader_round_to_epoch_index(round: Round, max_epoch: u64) -> (Epoch, usize) {
     assert_eq!(round % 2, 1, "round must be an odd number");
     assert!(round > 0, "round must be positive");
     assert!(max_epoch > 0, "max_epoch must be positive");
@@ -72,7 +83,7 @@ pub fn dolphin_round_to_epoch_index(round: Round, max_epoch: u64) -> (Epoch, usi
     (epoch, index as usize)
 }
 
-pub fn dolphin_epoch_index_to_round(epoch: Epoch, index: usize, max_epoch: u64) -> Round {
+pub fn epoch_index_to_leader_round(epoch: Epoch, index: usize, max_epoch: u64) -> Round {
     assert!(epoch > 0, "epoch must be positive");
     assert!(index > 0 && index <= max_epoch as usize, "index must be between 1 and max_epoch");
     assert!(max_epoch > 0, "max_epoch must be positive");

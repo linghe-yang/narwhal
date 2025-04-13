@@ -39,7 +39,7 @@ impl BreezeReconResult {
 
     pub fn secret_to_number(&self) -> RandomNum {
         let bytes = self.value.to_bytes(); // 获取底层 [u8; 32]
-        RandomNum::from_le_bytes(bytes[..8].try_into().unwrap()) // 取低8字节转为u64
+        RandomNum::from_le_bytes(bytes[..16].try_into().unwrap()) // 取低8字节转为u128
     }
 
     // 根据 t+1 个点计算 f(0)

@@ -4,7 +4,6 @@ use model::breeze_universal::{BreezeCertificate, BreezeReconRequest};
 use model::types_and_const::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use log::info;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 
@@ -97,7 +96,6 @@ impl Coordinator {
                     }
                 }
                 Some(cc) = self.cc_decided_from_init_consensus.recv()=>{
-                    info!("cc_decided_from_init_consensus");
                     self.certificate_buffer.insert(0, cc);
                     self.decided_common_core.insert(0);
                     self.b_share_cmd_sender.send(1).await.unwrap();
@@ -120,7 +118,7 @@ impl Coordinator {
                 }
 
                 Some(round) = self.global_coin_recon_req_receiver.recv() =>{
-                    let (mut epoch, index) = dolphin_round_to_epoch_index(round, max_epoch);
+                    let (mut epoch, index) = leader_round_to_epoch_index(round, max_epoch);
                     if index > max_epoch as usize {
                         self.global_coin_res_sender.send((round,Err(DrbError::InvalidIndex))).await.unwrap();
                         continue;
@@ -174,7 +172,7 @@ impl Coordinator {
                 Some((epoch,index,value)) = self.b_recon_res_receiver.recv() =>{
                     self.beacon_reconstructed.insert((epoch,index),value);
                     if index <= max_epoch as usize{
-                        let round = dolphin_epoch_index_to_round(epoch +1,index,max_epoch);
+                        let round = epoch_index_to_leader_round(epoch +1,index,max_epoch);
                         self.global_coin_res_sender.send((round,Ok(value))).await.unwrap();
                     } else if index <= (max_epoch+ beacon_per_epoch) as usize{
                         self.beacon_res_sender.send(((epoch,index - max_epoch as usize),Ok(value))).await.unwrap();

@@ -269,7 +269,7 @@ fn transpose_merkle_proofs(matrix: Vec<Vec<(usize, Vec<u8>)>>) -> Vec<(usize, Ve
     }
 
     // 按 usize 从低到高排序
-    result.sort_by(|a, b| a.0.cmp(&b.0));
+    // result.sort_by(|a, b| a.0.cmp(&b.0));
 
     result
 }

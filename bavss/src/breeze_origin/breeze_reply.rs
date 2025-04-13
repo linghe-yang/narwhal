@@ -65,7 +65,6 @@ impl BreezeReply {
                     
                     let crs = self.common_reference_string.read().await;
                     let committee = self.committee.read().await;
-                    info!("Breeze reply received Share");
                     if !Shares::verify(
                         &crs,
                         self.node_id.1,
@@ -74,7 +73,6 @@ impl BreezeReply {
                     ) {
                         continue;
                     }
-                    info!("Share is valid");
                     let dealer = message.sender;
                     // 验证并签名
                     let signature = Signature::new(&my_share.c, &self.signing_key);
@@ -119,7 +117,6 @@ impl BreezeReply {
                         .entry(epoch)
                         .or_insert_with(Vec::new)
                         .push(handler);
-                    info!("Breeze reply successfully completed");
                 }
             }
         }

@@ -2,7 +2,6 @@
 use curve25519_dalek::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
-use log::info;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use crypto::{Digest, PublicKey};
@@ -17,11 +16,8 @@ use crate::breeze_structs::{Share, WitnessBreeze};
 pub struct Shares (pub(crate) Vec<(Share, PublicKey)>);
 
 impl Shares {
-    pub fn get_c_ref(&self) -> &Digest{
-        &self.0[0].0.c
-    }
-    pub fn get_shares_ref(&self) -> &Vec<(Share, PublicKey)> {
-        &self.0
+    pub fn get_c(&self) -> Digest{
+        self.0[0].0.c.clone()
     }
     fn generate_batched_polynomial(batch: usize, t: usize, mut rng: OsRng) -> Vec<Vec<Scalar>> {
         let batched_polynomial: Vec<Vec<Scalar>> = (0..batch)
@@ -113,7 +109,6 @@ impl Shares {
         if !batch_verify_eval(crs, &share.r_hat, share.y_k, y, share.phi_k, t, share.n){
             return false;
         }
-        info!("batch verify success");
         let mut flag = true;
         for wit in share.r_witness.iter(){
             let commit = wit.poly_commit;
@@ -123,8 +118,6 @@ impl Shares {
                     if !res{
                         flag = false;
                         break;
-                    }else {
-                        info!("merkle verify success");
                     }
                 }
                 Err(_)=>{
@@ -135,6 +128,55 @@ impl Shares {
         }
         flag
     }
+    // pub fn new(
+    //     batch_size: usize,
+    //     epoch: Epoch,
+    //     ids: Vec<(PublicKey,Id)>,
+    //     t: usize,
+    //     crs: &CommonReferenceString,
+    // ) -> Self {
+    //     let rng = OsRng;
+    //     let n = ids.len();
+    //     let batched_polynomial = Self::generate_batched_polynomial(batch_size, t, rng);
+    //     let r_hat_breeze = Self::batch_commit(&crs, &batched_polynomial, t);
+    //     let data = Self::serialize_commitments(&r_hat_breeze);
+    // 
+    //     let merkle_tree_data = match generate_merkle_tree(data) {
+    //         Ok(merkle_tree_data) => merkle_tree_data,
+    //         Err(_) => panic!("Fail to get merkle branch!"),
+    //     };
+    //     let (c, merkle_proofs) = merkle_tree_data;
+    //     let r_hat_witness: Vec<WitnessBreeze> = (0..batch_size)
+    //         .map(|i| WitnessBreeze {
+    //             poly_commit: r_hat_breeze[i].clone(),
+    //             merkle_branch: merkle_proofs[i].clone()
+    //         })
+    //         .collect();
+    //     let y_value = Self::generate_evaluation_points_n(t, &ids);
+    //     let (y_k, phi_k) = batch_eval(&crs, &batched_polynomial, &y_value, &r_hat_breeze, t, n);
+    // 
+    //     let y_k = transpose(y_k);
+    // 
+    //     assert_eq!(y_k.len(), n, "shards error");
+    //     assert_eq!(phi_k.len(), n, "shards error");
+    // 
+    //     let mut all_set = Vec::new();
+    //     for i in 0..n {
+    //         let share = Share {
+    //             c,
+    //             r_hat: r_hat_breeze.clone(),
+    //             r_witness: r_hat_witness.clone(),
+    //             y_k: y_k[i].clone(),
+    //             phi_k: phi_k[i].clone(),
+    //             n,
+    //             epoch: epoch.clone(),
+    //         };
+    // 
+    //         all_set.push((share, ids[i].0));
+    //     }
+    //     Shares(all_set)
+    // }
+
     pub fn new(
         batch_size: usize,
         epoch: Epoch,

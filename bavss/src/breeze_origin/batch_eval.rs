@@ -5,12 +5,12 @@ use rand::Rng;
 use rs_merkle::algorithms::Sha256;
 use rs_merkle::Hasher;
 use std::ops::Mul;
-use log::info;
 use crypto::Digest as CryptoDigest;
 use model::breeze_universal::{CommonReferenceString};
 use crate::breeze_origin::merkletree::{generate_merkle_tree, verify_merkle_proof};
-use crate::breeze_origin::utils::{hash_merkle1, hash_merkle2, transpose};
+use crate::breeze_origin::utils::{transpose};
 use crate::breeze_structs::{GroupParameters, IProofUnit, PhiElement};
+use crate::merkletree::{hash_merkle1, hash_merkle2};
 
 pub fn batch_eval(
     crs: &CommonReferenceString,
@@ -389,7 +389,7 @@ fn inner_product_proof_func<'a>(
         "Vectors must have the same length"
     );
     let mut flag = 0;
-    
+
     // let mut phi_this: Vec<IProofUnit> = Vec::with_capacity(A.len());
     let mut phi_this: Vec<IProofUnit> = vec![
         IProofUnit {
@@ -403,10 +403,10 @@ fn inner_product_proof_func<'a>(
         s_d_hat.len()
     ];
     let z: CryptoDigest;
-    
+
     #[allow(unused_assignments)]
     let mut branches:Vec<(usize, Vec<u8>)> = Vec::new();
-    
+
     if p == 1 {
         for idx in 0..s_d_hat.len(){
             phi_this[idx].a_only = a[0];
@@ -589,7 +589,6 @@ fn inner_product_verify_func(
     match verify_merkle_proof(&leaf, phi[0].b_i.clone(), phi[0].z, n) {
         Ok(result) =>{
             if !result{
-                info!("verify_merkle_proof failed");
                 return false;
             }
         }

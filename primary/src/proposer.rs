@@ -7,11 +7,13 @@ use crypto::{Digest, PublicKey, SignatureService};
 #[cfg(feature = "benchmark")]
 use log::info;
 use log::{debug, log_enabled};
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{watch, RwLock};
 use tokio::time::{sleep, Duration, Instant};
 use model::breeze_universal::BreezeCertificate;
-use model::types_and_const::{Round, WorkerId};
+use model::types_and_const::{round_to_epoch_index, Epoch, Round, WorkerId, MAX_EPOCH};
 
 #[cfg(test)]
 #[path = "tests/proposer_tests.rs"]
@@ -48,8 +50,9 @@ pub struct Proposer {
     /// The metadata to include in the next header.
     metadata: VecDeque<Metadata>,
 
-    breeze_cer_buffer: VecDeque<BreezeCertificate>,
-    cer_to_consensus_receiver: Receiver<BreezeCertificate>,
+    breeze_cer_buffer: Arc<RwLock<Vec<BreezeCertificate>>>,
+    bcb_change_receiver: watch::Receiver<()>,
+    breeze_cer_proposed: HashSet<Epoch>
 }
 
 impl Proposer {
@@ -65,14 +68,26 @@ impl Proposer {
         tx_core: Sender<Header>,
         rx_consensus: Receiver<Metadata>,
 
-        cer_to_consensus_receiver: Receiver<BreezeCertificate>,
+        mut cer_to_consensus_receiver: Receiver<BreezeCertificate>,
     ) {
         let genesis = Certificate::genesis(committee)
             .iter()
             .map(|x| x.digest())
             .collect();
 
-        let breeze_cer_buffer = VecDeque::new();
+        let breeze_cer_buffer = Arc::new(RwLock::new(Vec::new()));
+        let bcb = Arc::clone(&breeze_cer_buffer);
+
+        let (bcb_change_sender, bcb_change_receiver) = watch::channel(());
+        tokio::spawn(async move{
+           loop {
+               let cer =  cer_to_consensus_receiver.recv().await.unwrap();
+               let mut write_lock = bcb.write().await;
+               write_lock.push(cer);
+               drop(write_lock);
+               bcb_change_sender.send(()).unwrap();
+           }
+        });
         tokio::spawn(async move {
             Self {
                 name,
@@ -90,7 +105,8 @@ impl Proposer {
                 metadata: VecDeque::new(),
 
                 breeze_cer_buffer,
-                cer_to_consensus_receiver
+                bcb_change_receiver,
+                breeze_cer_proposed: HashSet::new(),
             }
             .run()
             .await;
@@ -98,6 +114,48 @@ impl Proposer {
     }
 
     async fn make_header(&mut self) {
+        let max_epoch = *MAX_EPOCH.get().unwrap();
+        let (epoch ,index) = round_to_epoch_index(self.round, max_epoch);
+        let mut cer: Option<BreezeCertificate> = None;
+
+        if index == 1{
+            let mut flag = false;
+            for e in self.breeze_cer_proposed.iter() {
+                if *e >= epoch {
+                    flag = true;
+                    break;
+                }
+            }
+            if flag == false {
+                info!("breeze cer for epoch:{} has not been received, start waiting", epoch);
+                loop{
+                    if self.bcb_change_receiver.changed().await.is_ok(){
+                        let mut bcb = self.breeze_cer_buffer.write().await;
+                        for (i, c) in bcb.iter().enumerate() {
+                            if c.epoch == epoch {
+                                cer = Some(c.clone());
+                                self.breeze_cer_proposed.insert(c.epoch);
+                                bcb.remove(i);
+                                break;
+                            }
+                        }
+                        if cer != None {
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            let mut bcb = self.breeze_cer_buffer.write().await;
+            cer = if bcb.is_empty() {
+                None
+            } else {
+                let bc = bcb.remove(0);
+                self.breeze_cer_proposed.insert(bc.epoch);
+                Some(bc)
+            };
+            drop(bcb);
+        }
         // Make a new header.
         let header = Header::new(
             self.name,
@@ -107,7 +165,7 @@ impl Proposer {
             self.metadata.pop_back(),
             &mut self.signature_service,
 
-            self.breeze_cer_buffer.pop_front(),
+            cer,
         )
         .await;
         debug!("Created {:?}", header);
@@ -185,9 +243,9 @@ impl Proposer {
                     self.metadata.push_front(metadata);
                 }
                 // certificate from breeze.
-                Some(cer) = self.cer_to_consensus_receiver.recv() => {
-                    self.breeze_cer_buffer.push_back(cer);
-                }
+                // Some(cer) = self.cer_to_consensus_receiver.recv() => {
+                //     self.breeze_cer_buffer.push_back(cer);
+                // }
                 () = &mut timer => {
                     // Nothing to do.
                 }
