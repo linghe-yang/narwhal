@@ -1,4 +1,4 @@
-
+use log::info;
 use model::types_and_const::{Id, RandomNum, ZqMod};
 use crate::Secret;
 
@@ -17,12 +17,13 @@ impl BreezeReconResult {
         }
     }
     pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>, q: ZqMod) -> Secret {
-        let evaluate_points = generate_evaluation_points_n(evaluate_ids);
+        
+        let evaluate_points = generate_evaluation_points_n(evaluate_ids, q);
         Self::lagrange_interpolation_at_zero(&evaluate_points,shares, q)
     }
     
     pub fn secret_to_number(&self) -> RandomNum {
-        0
+        self.value as RandomNum
     }
 
     // 根据 t+1 个点计算 f(0)
@@ -58,11 +59,11 @@ impl BreezeReconResult {
     }
 
 }
-fn generate_evaluation_points_n(ids: &Vec<Id>) -> Vec<ZqMod> {
+fn generate_evaluation_points_n(ids: &Vec<Id>, q: ZqMod) -> Vec<ZqMod> {
     let mut res: Vec<ZqMod> = Vec::new();
 
     for id in ids {
-        let base = *id as ZqMod;
+        let base = (*id as ZqMod) % q;
         res.push(base);
     }
     res

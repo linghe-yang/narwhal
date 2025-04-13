@@ -112,9 +112,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     match matches.subcommand() {
         // Spawn the primary and consensus core.
         ("primary", Some(sub_matches)) => {
-            BEACON_PER_EPOCH.set(200).unwrap();
+            BEACON_PER_EPOCH.set(236).unwrap();
             MAX_WAVE.set(4).unwrap();
-            MAX_EPOCH.set(30).unwrap();
+            MAX_EPOCH.set(20).unwrap();
             let (breeze_share_cmd_sender, breeze_share_cmd_receiver) =
                 channel(CHANNEL_CAPACITY);
             let (breeze_certificate_sender, breeze_certificate_receiver) =

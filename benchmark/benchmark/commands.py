@@ -25,7 +25,9 @@ class CommandMaker:
     @staticmethod
     def compile_gen_files():
         return f'cargo build --quiet --release --package gen_files --features "benchmark"'
-
+    @staticmethod
+    def compile_gen_files_pq():
+        return f'cargo build --quiet --release --package gen_files --features "benchmark pq"'
     @staticmethod
     def generate_key(filename):
         assert isinstance(filename, str)
@@ -33,7 +35,11 @@ class CommandMaker:
 
     @staticmethod
     def generate_crs(faults):
-        return f'./gen_files generate_crs --faults {faults}'
+        return f'./gen_files generate_crs --fault_tolerance {faults}'
+
+    @staticmethod
+    def generate_crs_q(n, log_q, g, kappa, r,ell):
+        return f'./gen_files generate_crs --n {n} --log_q {log_q} --g {g} --kappa {kappa} --r {r} --ell {ell}'
 
     @staticmethod
     def run_primary(keys, committee, store, crs, parameters, debug=False):

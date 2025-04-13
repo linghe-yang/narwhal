@@ -77,20 +77,42 @@ impl<'de> Deserialize<'de> for PublicKey {
     }
 }
 
-// 实现Display trait
+// // 实现Display trait
+// impl fmt::Display for PublicKey {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let bytes = self.0.as_bytes();
+//         write!(f, "PublicKey({})", hex::encode(bytes))
+//     }
+// }
+// 
+// // 实现Debug trait
+// impl fmt::Debug for PublicKey {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let bytes = self.0.as_bytes();
+//         f.debug_struct("PublicKey")
+//             .field("data", &format_args!("0x{}", hex::encode(bytes)))
+//             .finish()
+//     }
+// }
+
+// Implement Display trait
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.0.as_bytes();
-        write!(f, "PublicKey({})", hex::encode(bytes))
+        let hex = hex::encode(bytes);
+        // Show first 8 characters and append "..."
+        write!(f, "PublicKey({}...)", &hex[..8.min(hex.len())])
     }
 }
 
-// 实现Debug trait
+// Implement Debug trait
 impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.0.as_bytes();
+        let hex = hex::encode(bytes);
+        // Show first 8 characters with "0x" prefix and append "..."
         f.debug_struct("PublicKey")
-            .field("data", &format_args!("0x{}", hex::encode(bytes)))
+            .field("data", &format_args!("0x{}...", &hex[..8.min(hex.len())]))
             .finish()
     }
 }
@@ -127,18 +149,38 @@ impl<'de> Deserialize<'de> for SecretKey {
     }
 }
 
+// impl fmt::Display for SecretKey {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let bytes = self.0.as_bytes();
+//         write!(f, "SecretKey({})", hex::encode(bytes))
+//     }
+// }
+// 
+// impl fmt::Debug for SecretKey {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let bytes = self.0.as_bytes();
+//         f.debug_struct("SecretKey")
+//             .field("data", &format_args!("0x{}", hex::encode(bytes)))
+//             .finish()
+//     }
+// }
 impl fmt::Display for SecretKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.0.as_bytes();
-        write!(f, "SecretKey({})", hex::encode(bytes))
+        let hex = hex::encode(bytes);
+        // Show first 8 characters and append "..."
+        write!(f, "SecretKey({}...)", &hex[..8.min(hex.len())])
     }
 }
 
+// Implement Debug trait
 impl fmt::Debug for SecretKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.0.as_bytes();
+        let hex = hex::encode(bytes);
+        // Show first 8 characters with "0x" prefix and append "..."
         f.debug_struct("SecretKey")
-            .field("data", &format_args!("0x{}", hex::encode(bytes)))
+            .field("data", &format_args!("0x{}...", &hex[..8.min(hex.len())]))
             .finish()
     }
 }
@@ -162,10 +204,20 @@ impl Default for Signature {
     }
 }
 
+// impl fmt::Debug for Signature {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.debug_struct("Signature")
+//             .field("data", &self.0.as_bytes()) 
+//             .finish()
+//     }
+// }
 impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bytes = self.0.as_bytes();
+        let hex = hex::encode(bytes);
+        // Show first 8 characters with "0x" prefix and append "..."
         f.debug_struct("Signature")
-            .field("data", &self.0.as_bytes()) 
+            .field("data", &format_args!("0x{}...", &hex[..8.min(hex.len())]))
             .finish()
     }
 }

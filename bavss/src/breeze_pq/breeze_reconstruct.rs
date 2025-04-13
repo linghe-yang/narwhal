@@ -52,7 +52,6 @@ impl BreezeReconstruct {
         loop {
             match self.breeze_reconstruct_cmd_receiver.recv().await.unwrap() {
                 message => {
-                    //是否需要await？
                     self.breeze_recon_certificate_sender
                         .send((message.c.clone(), message.epoch, message.index))
                         .await

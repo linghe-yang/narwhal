@@ -76,7 +76,7 @@ impl Shares {
         batch_size: usize,
         epoch: Epoch,
         ids: Vec<(PublicKey, Id)>,
-        f: usize,
+        ft: usize,
         crs: &PQCrs,
     ) -> (Self, Vec<Digest>) {
         let g = crs.g;
@@ -89,7 +89,7 @@ impl Shares {
         let mut polynomials = Vec::new();
         assert!(batch_size * g <= kappa * n, "batch size too large");
         for _ in 0..(batch_size * g) {
-            polynomials.push(Polynomial::new(f, q));
+            polynomials.push(Polynomial::new(ft, q));
         }
         let f = generate_f_vector(r, ell, kappa, n, q, polynomials);
         let a = &crs.a;
@@ -97,7 +97,7 @@ impl Shares {
 
         let start = Instant::now();
         let t = generate_t(&f, &mut s_vectors, r, ell, kappa, n, q, log_q, &a);
-        println!("承诺生成时间: {:?}", start.elapsed());
+        // println!("承诺生成时间: {:?}", start.elapsed());
 
         let s_vectors: Vec<DVector<ZqInt>> = s_vectors
             .into_iter()
@@ -199,7 +199,7 @@ impl Shares {
             })
             .collect();
 
-        println!("分片证明时间: {:?}", start.elapsed());
+        // println!("分片证明时间: {:?}", start.elapsed());
         let (roots, proofs) = generate_merkle_proofs(&shares);
         for (share, proof) in shares.iter_mut().zip(proofs.into_iter()) {
             // proof 是 (usize, Vec<Vec<u8>>)，我们需要第二个元素
@@ -211,6 +211,7 @@ impl Shares {
 
 fn dvec_zint_to_vec_int(v: &DVector<ZqInt>) -> Vec<ZqMod> {
     let res: Vec<_> = v.iter().map(|&z| z.residue()).collect();
+
     res
 }
 fn proof_unit_to_vec(v: &Vec<ProofUnit>) -> Vec<(Vec<ZqMod>, Vec<ZqMod>)> {

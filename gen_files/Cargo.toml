@@ -10,6 +10,9 @@ curve25519-dalek = { version = "4.0",features = ["rand_core","serde"] }
 model = { path = "../model" }
 serde_json = "1.0.140"
 serde = { version = "1.0.219", features = ["derive"] }
+num-bigint = "0.4"
+num-prime = "0.4"
+num-traits = "0.2.19"
 [features]
 benchmark = []
-pq = []
+pq = ["model/pq"]

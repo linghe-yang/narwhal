@@ -10,7 +10,7 @@ from benchmark.remote import Bench, BenchError
 
 
 @task
-def local(ctx, debug=True):
+def local(ctx, debug=False):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
@@ -20,7 +20,7 @@ def local(ctx, debug=True):
         'tx_size': 512,
         'duration': 20,
         'protocol': 'dolphin',
-        'crypto': 'origin'
+        'crypto': 'post_quantum'
     }
     node_params = {
         'timeout': 1_000,  # ms

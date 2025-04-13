@@ -46,7 +46,6 @@ impl BreezeConfirm {
         loop {
             match self.breeze_confirm_receiver.recv().await.unwrap() {
                 message => {
-                    
                     let epoch = match message.get_epoch() {
                         Some(epoch) => epoch,
                         None => {

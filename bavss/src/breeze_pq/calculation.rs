@@ -372,7 +372,7 @@ pub fn verify_proofs(
     if infinity_norm(&proofs[0].y) as usize > (r*kappa).pow(0u32) {
         panic!("y_{}' norm is too large",0);
     }
-    println!("verify success for tree depth: {}",0);
+    // println!("verify success for tree depth: {}",0);
     let mut c = generate_fiat_shamir_challenge_matrix(&t, &u, &x, &proofs[0].y, &proofs[0].v, r, kappa, q);
     for i in 1..=ell {
         let left = i_kron_a_dot_s(&a, &proofs[i].y, kappa, &zero, &one);
@@ -387,7 +387,7 @@ pub fn verify_proofs(
 
         x.truncate(x.len() - 1);
         c = generate_fiat_shamir_challenge_matrix(&tj_plus_1, &uj_plus_1, &x, &proofs[i].y, &proofs[i].v, r, kappa, q);
-        println!("verify success for tree depth: {}",i);
+        // println!("verify success for tree depth: {}",i);
     }
     true
 }

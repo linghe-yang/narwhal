@@ -113,7 +113,6 @@ impl Coordinator {
                     let committee = self.committee.read().await;
                     let fault_tolerance = committee.authorities_fault_tolerance();
                     if inner_map.len() >= fault_tolerance + 1{
-                        info!("Common core for epoch: {} has been recorded", epoch);
                         self.decided_common_core.insert(epoch);
                         self.b_share_cmd_sender.send(epoch + 1).await.unwrap();
                     }

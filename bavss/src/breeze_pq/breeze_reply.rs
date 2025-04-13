@@ -74,13 +74,16 @@ impl BreezeReply {
                     };
                     let crs = self.common_reference_string.read().await;
 
-                    if !Shares::verify_shares(
-                        &crs,
-                        &my_share,
-                        self.node_id.1
-                    ) {
-                        continue;
+                    if message.sender != self.node_id.0 {
+                        if !Shares::verify_shares(
+                            &crs,
+                            &my_share,
+                            self.node_id.1
+                        ) {
+                            continue;
+                        }
                     }
+
                     let inner_map = self.shares_received.entry(my_share.epoch).or_insert_with(HashMap::new);
                     inner_map.entry(message.sender).or_insert(my_share);
                 },
@@ -108,8 +111,11 @@ impl BreezeReply {
                     for (pk, share) in share_map {
                         // 检查 merkle_map 中是否有相同的 PublicKey
                         if let Some(digests) = merkle_map.get(pk) {
-                            if Shares::verify_merkle_batch(self.node_id.1,share, digests) {
-                                println!("verify_merkle_batch success");
+                            if *pk == self.node_id.0 {
+                                let signature = Signature::new(&share.c, &self.signing_key);
+                                reply_msgs.push((*pk, share, signature, *epoch));
+                            }
+                            else if Shares::verify_merkle_batch(self.node_id.1,share, digests) {
                                 let signature = Signature::new(&share.c, &self.signing_key);
                                 // let mut valid_shares = self.valid_shares.write().await;
                                 // let inner_map =

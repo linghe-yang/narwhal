@@ -58,10 +58,16 @@ class LocalBench:
             )
 
             # Recompile the gen_files crate
-            cmd = CommandMaker.compile_gen_files()
-            subprocess.run(
-                [cmd], shell=True, check=True
-            )
+            if self.crypto == 'pq':
+                cmd = CommandMaker.compile_gen_files_pq()
+                subprocess.run(
+                    [cmd], shell=True, check=True
+                )
+            else:
+                cmd = CommandMaker.compile_gen_files()
+                subprocess.run(
+                    [cmd], shell=True, check=True
+                )
 
             # Create alias for the client and nodes binary. and gen_files
             cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
@@ -79,9 +85,20 @@ class LocalBench:
             committee = LocalCommittee(names, self.BASE_PORT, self.workers)
             committee.print(PathMaker.committee_file())
             # generate crs file
-            fault_tolerance = (len(names) -1) // 3
-            cmd = CommandMaker.generate_crs(fault_tolerance).split()
-            subprocess.run(cmd, check=True)
+            if self.crypto == 'pq':
+                n = 16
+                log_q = 32
+                g = 1
+                kappa = 16
+                r = 2
+                ell = 1
+                cmd = CommandMaker.generate_crs_q(n, log_q, g, kappa, r, ell).split()
+                subprocess.run(cmd, check=True)
+            else:
+                fault_tolerance = (len(names) - 1) // 3
+                cmd = CommandMaker.generate_crs(fault_tolerance).split()
+                subprocess.run(cmd, check=True)
+
 
             self.node_parameters.print(PathMaker.parameters_file())
 

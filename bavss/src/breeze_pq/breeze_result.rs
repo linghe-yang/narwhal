@@ -22,7 +22,7 @@ pub struct BreezeResult {
     certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>>,
     // shares_unverified_yet: Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>>,
     shares_verified:
-        Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>>,
+        Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>>,
     // reconstructed_epoch_wave: Vec<(Epoch, usize)>
     reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>>,
 
@@ -42,10 +42,10 @@ impl BreezeResult {
         common_reference_string: Arc<RwLock<PQCrs>>,
     ) {
         let shares_unverified_yet: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, SingleShare>>>>,
         > = Arc::new(RwLock::new(HashMap::new()));
         let shares_verified: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>,
         > = Arc::new(RwLock::new(HashMap::new()));
         let reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>> =
             Arc::new(RwLock::new(Vec::new()));
@@ -61,15 +61,17 @@ impl BreezeResult {
             Arc::clone(&shares_verified),
             shares_verified_watch_sender.clone(),
         ));
-        tokio::spawn(Self::certificate_share_monitor(
-            breeze_recon_certificate_receiver,
-            Arc::clone(&reconstructed_epoch_wave),
-            Arc::clone(&certificates_to_reconstruct_buffer),
+        tokio::spawn(Self::share_monitor(
             breeze_reconstruct_secret_receiver,
             Arc::clone(&merkle_roots_received),
             Arc::clone(&shares_verified),
             Arc::clone(&shares_unverified_yet),
-            shares_verified_watch_sender.clone(),
+            shares_verified_watch_sender.clone()
+        ));
+        tokio::spawn(Self::certificate_monitor(
+            breeze_recon_certificate_receiver,
+            Arc::clone(&reconstructed_epoch_wave),
+            Arc::clone(&certificates_to_reconstruct_buffer)
         ));
 
         tokio::spawn(async move {
@@ -112,7 +114,7 @@ impl BreezeResult {
                     if let Some(shares) = shares_verified.get(&key) {
                         for (c, s) in shares.iter() {
                             if s.len() >= threshold {
-                                let s: Vec<(PublicKey, Secret)> = s.iter().cloned().collect();
+                                let s: Vec<(PublicKey, Secret)> = s.iter().map(|(pk, s)| (*pk,*s)).collect();
                                 secret_can_be_reconstructed.push((*c, s));
                                 digest_can_be_reconstructed.insert(*c);
                             }
@@ -131,13 +133,16 @@ impl BreezeResult {
                     }
                     true
                 });
-                let mut reconstructed_epoch_wave = self.reconstructed_epoch_wave.write().await;
-                let mut shares_verified = self.shares_verified.write().await;
-                for key in key_changed {
-                    reconstructed_epoch_wave.push(key);
-                    shares_verified.remove(&key);
+                if !key_changed.is_empty() {
+                    drop(shares_verified);
+                    let mut reconstructed_epoch_wave = self.reconstructed_epoch_wave.write().await;
+                    let mut shares_verified = self.shares_verified.write().await;
+                    for key in key_changed {
+                        reconstructed_epoch_wave.push(key);
+                        shares_verified.remove(&key);
+                    }
                 }
-
+                
                 for (epoch, index, secret_set) in secrets_to_reconstruct {
                     let mut cumulated_output = 0;
                     for (_, shares) in secret_set {
@@ -262,10 +267,10 @@ impl BreezeResult {
         mut merkle_watch_receiver: watch::Receiver<()>,
         merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
         shares_unverified_yet: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, SingleShare>>>>,
         >,
         shares_verified: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>,
         >,
 
         shares_verified_watch_sender: watch::Sender<()>,
@@ -278,17 +283,17 @@ impl BreezeResult {
                     match merkle_roots_received.get(&epoch) {
                         Some(roots) => {
                             for (digest, set) in secrets.iter() {
-                                for (pk,ss) in set.iter() {
-                                    if roots.contains_key(&pk) {
-                                        let rs = roots.get(&pk).unwrap();
+                                for (receiver_pk,ss) in set.iter() {
+                                    if roots.contains_key(&ss.dealer) {
+                                        let rs = roots.get(&ss.dealer).unwrap();
                                         if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[*index - 1],ss.total_party_num) {
                                             let mut write_lock = shares_verified.write().await;
                                             let temp = write_lock
                                                 .entry((*epoch, *index))
                                                 .or_insert(HashMap::new());
                                             let temp2 =
-                                                temp.entry(*digest).or_insert(HashSet::new());
-                                            temp2.insert((*pk, ss.y));
+                                                temp.entry(*digest).or_insert(HashMap::new());
+                                            temp2.insert(*receiver_pk, ss.y);
 
                                             shares_verified_watch_sender.send(()).unwrap();
                                         }
@@ -306,78 +311,155 @@ impl BreezeResult {
         }
     }
 
-    async fn certificate_share_monitor(
-        mut breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>, Epoch, usize)>,
-        reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>>,
-        certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>>,
+    async fn share_monitor(
         mut breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
         merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
         shares_verified: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>,
         >,
         shares_unverified_yet: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, SingleShare>>>>,
         >,
 
         shares_verified_watch_sender: watch::Sender<()>,
-    ) {
-        loop {
-            tokio::select! {
-                Some(certificates_to_reconstruct) = breeze_recon_certificate_receiver.recv() => {
-                    let key = (certificates_to_reconstruct.1, certificates_to_reconstruct.2);
-                    if !reconstructed_epoch_wave.read().await.contains(&key) {
-                        let mut certificates_to_reconstruct_buffer = certificates_to_reconstruct_buffer.write().await;
-                        let exists = certificates_to_reconstruct_buffer.iter().any(|(_, e, w)| e == &certificates_to_reconstruct.1 && w == &certificates_to_reconstruct.2);
-                        if !exists {
-                            certificates_to_reconstruct_buffer.push(certificates_to_reconstruct);
-                        }
+    ){
+        loop{
+            let shares_from_others = breeze_reconstruct_secret_receiver.recv().await.unwrap();
+            match shares_from_others.content {
+                BreezeContent::Reconstruct(share) => {
+                    let max_index = *MAX_INDEX.get().unwrap();
+                    if share.index > max_index{
+                        continue;
                     }
-                },
-                Some(shares_from_others) = breeze_reconstruct_secret_receiver.recv() => {
-                    match shares_from_others.content {
-                        BreezeContent::Reconstruct(share) => {
-                            let max_index = *MAX_INDEX.get().unwrap();
-                            if share.index > max_index{
-                                continue;
+                    // let key = (share.epoch, share.index);
+                    let merkle_roots_received = merkle_roots_received.read().await;
+                    match merkle_roots_received.get(&share.epoch) {
+                        Some(roots) => {
+                            for ss in share.secrets.iter() {
+                                if roots.contains_key(&ss.dealer){
+                                    let rs = roots.get(&ss.dealer).unwrap();
+                                    if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[share.index - 1],ss.total_party_num) {
+                                        let mut write_lock = shares_verified.write().await;
+                                        let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+                                        let temp2 = temp.entry(ss.c).or_insert(HashMap::new());
+                                        temp2.insert(shares_from_others.sender,ss.y);
+                                        drop(write_lock);
+                                        shares_verified_watch_sender.send(()).unwrap();
+                                    }else {
+                                    }
+                                }else {
+                                    let mut write_lock = shares_unverified_yet.write().await;
+                                    let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+                                    let temp2 = temp.entry(ss.c).or_insert(HashMap::new());
+                                    temp2.insert(shares_from_others.sender,ss.clone());
+                                    drop(write_lock);
+                                }
                             }
-                            // let key = (share.epoch, share.index);
-                            let merkle_roots_received = merkle_roots_received.read().await;
-                            match merkle_roots_received.get(&share.epoch) {
-                                Some(roots) => {
-                                    for ss in share.secrets.iter() {
-                                        if roots.contains_key(&ss.dealer){
-                                            let rs = roots.get(&ss.dealer).unwrap();
-                                            if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[share.index - 1],ss.total_party_num) {
-                                                let mut write_lock = shares_verified.write().await;
-                                                let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
-                                                let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
-                                                temp2.insert((ss.dealer,ss.y));
 
-                                                shares_verified_watch_sender.send(()).unwrap();
-                                            }
-                                        }else {
-                                            let mut write_lock = shares_unverified_yet.write().await;
-                                            let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
-                                            let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
-                                            temp2.insert((ss.dealer,ss.clone()));
-                                        }
-                                    }
-
-                                }
-                                None => {
-                                    for ss in share.secrets.iter() {
-                                        let mut write_lock = shares_unverified_yet.write().await;
-                                            let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
-                                            let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
-                                            temp2.insert((ss.dealer,ss.clone()));
-                                    }
-                                }
+                        }
+                        None => {
+                            for ss in share.secrets.iter() {
+                                let mut write_lock = shares_unverified_yet.write().await;
+                                let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+                                let temp2 = temp.entry(ss.c).or_insert(HashMap::new());
+                                temp2.insert(shares_from_others.sender,ss.clone());
+                                drop(write_lock);
                             }
                         }
-                        _ => {}
                     }
                 }
+                _ => {}
             }
+        }
+    }
+
+    async fn certificate_monitor(
+        mut breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>, Epoch, usize)>,
+        reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>>,
+        certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>>,
+        // mut breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
+        // merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
+        // shares_verified: Arc<
+        //     RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, Secret)>>>>,
+        // >,
+        // shares_unverified_yet: Arc<
+        //     RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>,
+        // >,
+        //
+        // shares_verified_watch_sender: watch::Sender<()>,
+    ) {
+        loop {
+            let certificates_to_reconstruct = breeze_recon_certificate_receiver.recv().await.unwrap();
+            let key = (certificates_to_reconstruct.1, certificates_to_reconstruct.2);
+            if !reconstructed_epoch_wave.read().await.contains(&key) {
+                let mut certificates_to_reconstruct_buffer = certificates_to_reconstruct_buffer.write().await;
+                let exists = certificates_to_reconstruct_buffer.iter().any(|(_, e, w)| e == &certificates_to_reconstruct.1 && w == &certificates_to_reconstruct.2);
+                if !exists {
+                    certificates_to_reconstruct_buffer.push(certificates_to_reconstruct);
+                }
+                drop(certificates_to_reconstruct_buffer);
+            }
+            // tokio::select! {
+            //     Some(certificates_to_reconstruct) = breeze_recon_certificate_receiver.recv() => {
+            //         let key = (certificates_to_reconstruct.1, certificates_to_reconstruct.2);
+            //         if !reconstructed_epoch_wave.read().await.contains(&key) {
+            //             let mut certificates_to_reconstruct_buffer = certificates_to_reconstruct_buffer.write().await;
+            //             let exists = certificates_to_reconstruct_buffer.iter().any(|(_, e, w)| e == &certificates_to_reconstruct.1 && w == &certificates_to_reconstruct.2);
+            //             if !exists {
+            //                 certificates_to_reconstruct_buffer.push(certificates_to_reconstruct);
+            //             }
+            //         }
+            //     },
+            //     Some(shares_from_others) = breeze_reconstruct_secret_receiver.recv() => {
+            //         info!("breeze result share from others received");
+            //         match shares_from_others.content {
+            //             BreezeContent::Reconstruct(share) => {
+            //                 let max_index = *MAX_INDEX.get().unwrap();
+            //                 if share.index > max_index{
+            //                     continue;
+            //                 }
+            //                 // let key = (share.epoch, share.index);
+            //                 let merkle_roots_received = merkle_roots_received.read().await;
+            //                 match merkle_roots_received.get(&share.epoch) {
+            //                     Some(roots) => {
+            //                         for ss in share.secrets.iter() {
+            //                             if roots.contains_key(&ss.dealer){
+            //                                 let rs = roots.get(&ss.dealer).unwrap();
+            //                                 if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[share.index - 1],ss.total_party_num) {
+            //                                     let mut write_lock = shares_verified.write().await;
+            //                                     let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+            //                                     let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+            //                                     temp2.insert((ss.dealer,ss.y));
+            //                                     info!("share has been verified,directly insert in the shares_verified");
+            //                                     shares_verified_watch_sender.send(()).unwrap();
+            //                                 }else {
+            //                                     info!("share is fake");
+            //                                 }
+            //                             }else {
+            //                                 info!("root has not been received yet, insert into shares_unverified_yet");
+            //                                 let mut write_lock = shares_unverified_yet.write().await;
+            //                                 let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+            //                                 let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+            //                                 temp2.insert((ss.dealer,ss.clone()));
+            //                             }
+            //                         }
+            //
+            //                     }
+            //                     None => {
+            //                         info!("x:root has not been received yet, insert into shares_unverified_yet");
+            //                         for ss in share.secrets.iter() {
+            //                             let mut write_lock = shares_unverified_yet.write().await;
+            //                                 let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
+            //                                 let temp2 = temp.entry(ss.c).or_insert(HashSet::new());
+            //                                 temp2.insert((ss.dealer,ss.clone()));
+            //                         }
+            //                     }
+            //                 }
+            //             }
+            //             _ => {}
+            //         }
+            //     }
+            // }
         }
     }
 }
