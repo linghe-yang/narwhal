@@ -2,6 +2,7 @@
 use curve25519_dalek::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
+use log::info;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use crypto::{Digest, PublicKey};
@@ -112,6 +113,7 @@ impl Shares {
         if !batch_verify_eval(crs, &share.r_hat, share.y_k, y, share.phi_k, t, share.n){
             return false;
         }
+        info!("batch verify success");
         let mut flag = true;
         for wit in share.r_witness.iter(){
             let commit = wit.poly_commit;
@@ -121,6 +123,8 @@ impl Shares {
                     if !res{
                         flag = false;
                         break;
+                    }else {
+                        info!("merkle verify success");
                     }
                 }
                 Err(_)=>{

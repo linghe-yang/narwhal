@@ -78,6 +78,7 @@ impl BreezeShare {
                         .entry(epoch)
                         .or_insert_with(Vec::new)
                         .extend(handlers);
+                    info!("Breeze share successfully completed");
                 }
             }
         }

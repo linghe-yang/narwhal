@@ -40,23 +40,23 @@ impl Polynomial {
         }
     }
     
-    pub fn coefficients(&self) -> &DVector<ZqInt> {
-        &self.coefficients
-    }
+    // pub fn coefficients(&self) -> &DVector<ZqInt> {
+    //     &self.coefficients
+    // }
     
-    pub fn modulus(&self) -> ZqMod {
-        self.modulus
-    }
+    // pub fn modulus(&self) -> ZqMod {
+    //     self.modulus
+    // }
 
-    pub fn evaluate(&self, x: ZqInt) -> ZqInt {
-        assert_eq!(x.modulus(), self.modulus, "Modulus mismatch: {} != {}", x.modulus(), self.modulus);
-
-        let mut result = ZqInt::new(0, self.modulus);
-        for &coeff in self.coefficients.iter().rev() {
-            result = result * x + coeff;
-        }
-        result
-    }
+    // pub fn evaluate(&self, x: ZqInt) -> ZqInt {
+    //     assert_eq!(x.modulus(), self.modulus, "Modulus mismatch: {} != {}", x.modulus(), self.modulus);
+    // 
+    //     let mut result = ZqInt::new(0, self.modulus);
+    //     for &coeff in self.coefficients.iter().rev() {
+    //         result = result * x + coeff;
+    //     }
+    //     result
+    // }
 }
 
 // 实现多项式加法

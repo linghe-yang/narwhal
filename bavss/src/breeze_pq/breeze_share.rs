@@ -17,7 +17,7 @@ pub struct BreezeShare{
     committee: Arc<RwLock<Committee>>,
     breeze_share_cmd_receiver: Receiver<Epoch>,
     network: ReliableSender,
-    common_reference_string: Arc<RwLock<PQCrs>>,
+    common_reference_string: Arc<PQCrs>,
     my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>,
     cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
     merkle_cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
@@ -29,7 +29,7 @@ impl BreezeShare {
         committee: Arc<RwLock<Committee>>,
         breeze_share_cmd_receiver: Receiver<Epoch>,
         network: ReliableSender,
-        common_reference_string: Arc<RwLock<PQCrs>>,
+        common_reference_string: Arc<PQCrs>,
         my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>
     ) {
         tokio::spawn(async move {
@@ -56,9 +56,8 @@ impl BreezeShare {
                     let committee = self.committee.read().await;
                     let ids = committee.get_all_ids();
                     let fault_tolerance = committee.authorities_fault_tolerance();
-                    let crs = self.common_reference_string.read().await;
                     let batch_size = *MAX_EPOCH.get().unwrap() + *BEACON_PER_EPOCH.get().unwrap();
-                    let (shares, merkle_roots) = Shares::new(batch_size as usize, epoch, ids, fault_tolerance, &crs);
+                    let (shares, merkle_roots) = Shares::new(batch_size as usize, epoch, ids, fault_tolerance, &self.common_reference_string);
                     let c = shares.get_c_ref().clone();
                     let mut share_map_to_addresses: HashMap<SocketAddr, Bytes> = HashMap::new();
                     let addresses = self.committee.read().await.all_breeze_addresses();

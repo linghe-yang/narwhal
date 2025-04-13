@@ -5,6 +5,7 @@ use rand::Rng;
 use rs_merkle::algorithms::Sha256;
 use rs_merkle::Hasher;
 use std::ops::Mul;
+use log::info;
 use crypto::Digest as CryptoDigest;
 use model::breeze_universal::{CommonReferenceString};
 use crate::breeze_origin::merkletree::{generate_merkle_tree, verify_merkle_proof};
@@ -588,6 +589,7 @@ fn inner_product_verify_func(
     match verify_merkle_proof(&leaf, phi[0].b_i.clone(), phi[0].z, n) {
         Ok(result) =>{
             if !result{
+                info!("verify_merkle_proof failed");
                 return false;
             }
         }

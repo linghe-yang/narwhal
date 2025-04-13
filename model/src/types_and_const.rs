@@ -7,7 +7,7 @@ pub type Id = usize;
 pub type Stake = u32;
 pub type WorkerId = u32;
 
-pub type RandomNum = u64;
+pub type RandomNum = u128;
 #[cfg(feature = "pq")]
 pub type ZqMod = u128;
 

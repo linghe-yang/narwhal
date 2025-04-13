@@ -86,10 +86,10 @@ class LocalBench:
             committee.print(PathMaker.committee_file())
             # generate crs file
             if self.crypto == 'pq':
-                n = 16
+                n = 32
                 log_q = 32
-                g = 1
-                kappa = 16
+                g = 4
+                kappa = 32
                 r = 2
                 ell = 1
                 cmd = CommandMaker.generate_crs_q(n, log_q, g, kappa, r, ell).split()

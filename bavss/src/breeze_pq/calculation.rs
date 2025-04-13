@@ -95,9 +95,9 @@ pub fn generate_t(
     // 从 ell 到 0 迭代
     for i in (0..=ell).rev() {
         let k = r.pow(i as u32) * kappa;
-        let L = r.pow(i as u32 + 1) * kappa * n;
+        let l = r.pow(i as u32 + 1) * kappa * n;
 
-        let s = find_low_norm_vector(L, q, &t, &zero, &one, log_q);
+        let s = find_low_norm_vector(l, &t, &zero, &one, log_q);
 
         s_vectors[i] = Some(s.clone());
 
@@ -111,7 +111,6 @@ pub fn generate_t(
 }
 pub fn find_low_norm_vector(
     m: usize,
-    modulus: ZqMod,
     f: &DVector<ZqInt>,
     zero: &ZqInt,
     one: &ZqInt,
@@ -149,7 +148,7 @@ pub fn generate_x_vectors(x: ZqInt, ell: usize, r: usize) -> Vec<DVector<ZqInt>>
         let power_base = r.pow(i as u32); // r^i
         // 计算 x^(r^i * (j-1))，j 从 1 到 r
         let mut current = ZqInt::new(1, q); // x^0 = 1
-        for j in 1..=r {
+        for _ in 1..=r {
             coefficients.push(current);
             // 计算下一个元素：x^(r^i * j) = x^(r^i * (j-1)) * x^(r^i)
             let step = power_mod(x, power_base, q); // x^(r^i)

@@ -6,7 +6,7 @@ use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
-use crate::{Digest, Hash};
+use crate::{Digest, Hash, SignatureService};
 
 impl Hash for &[u8] {
     fn digest(&self) -> Digest {

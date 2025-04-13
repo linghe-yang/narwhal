@@ -53,7 +53,7 @@ impl Breeze {
         let merkle_roots_received: Arc<RwLock<HashMap<Epoch,HashMap<PublicKey,Vec<Digest>>>>> = Arc::new(RwLock::new(HashMap::new()));
         let (merkle_watch_sender, merkle_watch_receiver) = watch::channel(());
         
-        let common_reference_string = Arc::new(RwLock::new(PQCrs::from(&common_reference_string)));
+        let common_reference_string = Arc::new(PQCrs::from(&common_reference_string));
         
         NetworkReceiver::spawn(
             address,
@@ -87,7 +87,8 @@ impl Breeze {
             breeze_reconstruct_cmd_receiver,
             breeze_recon_certificate_sender,
             ReliableSender::new(),
-            Arc::clone(&valid_shares)
+            Arc::clone(&valid_shares),
+            Arc::clone(&common_reference_string),
         );
         let committee = Arc::new(RwLock::new(committee));
         //confirm phase

@@ -34,7 +34,7 @@ impl MessageHandler for BreezeMessageHandler {
                     .await
                     .expect("Failed to send reply to breeze confirm phase");
             }
-            BreezeContent::Confirm(_) => {
+            BreezeContent::Merkle(_) => {
                 self.breeze_out_sender
                     .send(message)
                     .await

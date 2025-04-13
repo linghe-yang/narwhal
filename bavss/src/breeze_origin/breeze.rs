@@ -31,7 +31,7 @@ impl Breeze {
         breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
         breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
 
-        common_reference_string: Arc<RwLock<CommonReferenceString>>,
+        common_reference_string: CommonReferenceString,
     ) {
         let pk = keypair.name;
         let sk = keypair.secret;
@@ -46,6 +46,7 @@ impl Breeze {
         let (breeze_reconstruct_secret_sender, breeze_reconstruct_secret_receiver) =
             channel::<BreezeMessage>(CHANNEL_CAPACITY);
         
+        let common_reference_string = Arc::new(RwLock::new(common_reference_string));
         
         let my_shares =Arc::new(RwLock::new(Vec::new()));
         

@@ -22,12 +22,12 @@ pub struct BreezeResult {
     certificates_to_reconstruct_buffer: Arc<RwLock<Vec<(HashSet<Digest>, Epoch, usize)>>>,
     // shares_unverified_yet: Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashSet<(PublicKey, SingleShare)>>>>>,
     shares_verified:
-        Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>>,
+        Arc<RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Vec<Secret>>>>>>,
     // reconstructed_epoch_wave: Vec<(Epoch, usize)>
     reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>>,
 
     shares_verified_watch_receiver: watch::Receiver<()>,
-    common_reference_string: Arc<RwLock<PQCrs>>,
+    common_reference_string: Arc<PQCrs>,
 }
 
 impl BreezeResult {
@@ -39,13 +39,13 @@ impl BreezeResult {
         merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
         merkle_watch_receiver: watch::Receiver<()>,
         breeze_result_sender: Sender<(Epoch, usize, RandomNum)>,
-        common_reference_string: Arc<RwLock<PQCrs>>,
+        common_reference_string: Arc<PQCrs>,
     ) {
         let shares_unverified_yet: Arc<
             RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, SingleShare>>>>,
         > = Arc::new(RwLock::new(HashMap::new()));
         let shares_verified: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Vec<Secret>>>>>,
         > = Arc::new(RwLock::new(HashMap::new()));
         let reconstructed_epoch_wave: Arc<RwLock<Vec<(Epoch, usize)>>> =
             Arc::new(RwLock::new(Vec::new()));
@@ -54,19 +54,22 @@ impl BreezeResult {
 
         let (shares_verified_watch_sender, shares_verified_watch_receiver) = watch::channel(());
 
+        let g = common_reference_string.g;
         tokio::spawn(Self::merkle_watch_monitor(
             merkle_watch_receiver,
             Arc::clone(&merkle_roots_received),
             Arc::clone(&shares_unverified_yet),
             Arc::clone(&shares_verified),
             shares_verified_watch_sender.clone(),
+            g
         ));
         tokio::spawn(Self::share_monitor(
             breeze_reconstruct_secret_receiver,
             Arc::clone(&merkle_roots_received),
             Arc::clone(&shares_verified),
             Arc::clone(&shares_unverified_yet),
-            shares_verified_watch_sender.clone()
+            shares_verified_watch_sender.clone(),
+            g
         ));
         tokio::spawn(Self::certificate_monitor(
             breeze_recon_certificate_receiver,
@@ -97,7 +100,7 @@ impl BreezeResult {
     pub async fn run(&mut self) {
         info!("Breeze result start to listen");
         let threshold = self.committee.authorities_fault_tolerance() + 1;
-        let q = self.common_reference_string.read().await.q;
+        let q = self.common_reference_string.q;
         loop {
             if self.shares_verified_watch_receiver.changed().await.is_ok() {
                 let mut secrets_to_reconstruct = Vec::new();
@@ -114,7 +117,7 @@ impl BreezeResult {
                     if let Some(shares) = shares_verified.get(&key) {
                         for (c, s) in shares.iter() {
                             if s.len() >= threshold {
-                                let s: Vec<(PublicKey, Secret)> = s.iter().map(|(pk, s)| (*pk,*s)).collect();
+                                let s: Vec<_> = s.iter().map(|(pk, s)| (*pk,s.clone())).collect();
                                 secret_can_be_reconstructed.push((*c, s));
                                 digest_can_be_reconstructed.insert(*c);
                             }
@@ -142,9 +145,9 @@ impl BreezeResult {
                         shares_verified.remove(&key);
                     }
                 }
-                
+
                 for (epoch, index, secret_set) in secrets_to_reconstruct {
-                    let mut cumulated_output = 0;
+                    let mut cumulated_output = vec![0;self.common_reference_string.g];
                     for (_, shares) in secret_set {
                         let mut ids = Vec::new();
                         let mut values = Vec::new();
@@ -154,7 +157,7 @@ impl BreezeResult {
                             ids.push(id);
                             values.push(value);
                         }
-                        cumulated_output += BreezeReconResult::interpolate(&ids, &values, q);
+                        BreezeReconResult::interpolate(&ids, &values, q, &mut cumulated_output);
                     }
                     let recon_output = BreezeReconResult::new(cumulated_output);
                     self.breeze_result_sender
@@ -270,10 +273,11 @@ impl BreezeResult {
             RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, SingleShare>>>>,
         >,
         shares_verified: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Vec<Secret>>>>>,
         >,
 
         shares_verified_watch_sender: watch::Sender<()>,
+        g: usize
     ) {
         loop {
             if merkle_watch_receiver.changed().await.is_ok() {
@@ -286,14 +290,15 @@ impl BreezeResult {
                                 for (receiver_pk,ss) in set.iter() {
                                     if roots.contains_key(&ss.dealer) {
                                         let rs = roots.get(&ss.dealer).unwrap();
-                                        if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[*index - 1],ss.total_party_num) {
+                                        let idx = (index - 1) * g;
+                                        if Shares::verify_merkle(&ss.y, ss.merkle_proof.clone(), rs[idx..idx + g].to_vec(), ss.total_party_num) {
                                             let mut write_lock = shares_verified.write().await;
                                             let temp = write_lock
                                                 .entry((*epoch, *index))
                                                 .or_insert(HashMap::new());
                                             let temp2 =
                                                 temp.entry(*digest).or_insert(HashMap::new());
-                                            temp2.insert(*receiver_pk, ss.y);
+                                            temp2.insert(*receiver_pk, ss.y.clone());
 
                                             shares_verified_watch_sender.send(()).unwrap();
                                         }
@@ -315,13 +320,14 @@ impl BreezeResult {
         mut breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
         merkle_roots_received: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Vec<Digest>>>>>,
         shares_verified: Arc<
-            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Secret>>>>,
+            RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, Vec<Secret>>>>>,
         >,
         shares_unverified_yet: Arc<
             RwLock<HashMap<(Epoch, usize), HashMap<Digest, HashMap<PublicKey, SingleShare>>>>,
         >,
 
         shares_verified_watch_sender: watch::Sender<()>,
+        g: usize,
     ){
         loop{
             let shares_from_others = breeze_reconstruct_secret_receiver.recv().await.unwrap();
@@ -338,11 +344,12 @@ impl BreezeResult {
                             for ss in share.secrets.iter() {
                                 if roots.contains_key(&ss.dealer){
                                     let rs = roots.get(&ss.dealer).unwrap();
-                                    if Shares::verify_merkle(ss.y,ss.merkle_proof.clone(),rs[share.index - 1],ss.total_party_num) {
+                                    let idx = (share.index - 1) * g;
+                                    if Shares::verify_merkle(&ss.y, ss.merkle_proof.clone(), rs[idx..idx+g].to_vec(), ss.total_party_num) {
                                         let mut write_lock = shares_verified.write().await;
                                         let temp = write_lock.entry((share.epoch,share.index)).or_insert(HashMap::new());
                                         let temp2 = temp.entry(ss.c).or_insert(HashMap::new());
-                                        temp2.insert(shares_from_others.sender,ss.y);
+                                        temp2.insert(shares_from_others.sender,ss.y.clone());
                                         drop(write_lock);
                                         shares_verified_watch_sender.send(()).unwrap();
                                     }else {

@@ -10,7 +10,6 @@ use nalgebra::DVector;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::ParallelBridge;
 use sha2::{Digest as ShaDigest, Sha256};
-use std::time::Instant;
 
 pub struct Shares(pub(crate) Vec<(Share, PublicKey)>);
 impl Shares {
@@ -54,23 +53,30 @@ impl Shares {
         }
         flag
     }
-    pub fn verify_merkle(y: ZqMod, proof: (usize,Vec<u8>), root: Digest, total_leaves_count: usize) -> bool {
-        let mut hasher = Sha256::new();
-        hasher.update(y.to_be_bytes());
-        let leaf = hasher.finalize().to_vec();
-        match verify_merkle_proof(
-            &leaf,
-            proof,
-            root,
-            total_leaves_count
-        ) {
-            Ok(_) => {
-                true
-            }
-            Err(_) => {
-                false
+    pub fn verify_merkle(y: &Vec<ZqMod>, proof: (usize,Vec<Vec<u8>>), root: Vec<Digest>, total_leaves_count: usize) -> bool {
+        if proof.1.len() != root.len() || y.len() != root.len() {
+            error!("proof length and roots length mismatch");
+            return false;
+        }
+
+        for (i,p) in proof.1.iter().enumerate() {
+            let mut hasher = Sha256::new();
+            hasher.update(y[i].to_be_bytes());
+            let leaf = hasher.finalize().to_vec();
+            match verify_merkle_proof(
+                &leaf,
+                (proof.0,p.clone()),
+                root[i],
+                total_leaves_count
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    return false;
+                }
             }
         }
+        true
+
     }
     pub fn new(
         batch_size: usize,
@@ -95,53 +101,15 @@ impl Shares {
         let a = &crs.a;
         let mut s_vectors: Vec<Option<DVector<ZqInt>>> = vec![None; ell + 1];
 
-        let start = Instant::now();
         let t = generate_t(&f, &mut s_vectors, r, ell, kappa, n, q, log_q, &a);
-        // println!("承诺生成时间: {:?}", start.elapsed());
 
         let s_vectors: Vec<DVector<ZqInt>> = s_vectors
             .into_iter()
             .map(|opt| opt.unwrap()) // 如果有 None，这里会 panic
             .collect();
-        let start = Instant::now();
 
         let t_vec = dvec_zint_to_vec_int(&t);
         let t_vec_hash = hash_c(&t_vec);
-        // let mut shares = Vec::new();
-        // for (pk, id) in ids {
-        //
-        //     let x = generate_x_vectors(ZqInt::new(id as ZqMod, q), ell, r);
-        //     let u = generate_polynomial_evaluation(f.clone(), &x, r, ell, ell, kappa, n, q);
-        //
-        //     let mut v0 = generate_v(f.clone(), &x, r, ell, ell, 1, kappa, n, q);
-        //     let c = generate_fiat_shamir_challenge_matrix(&t, &u, &x, &s_vectors[0], &v0, r, kappa ,q);
-        //     let mut proof: Vec<ProofUnit> = Vec::new();
-        //     proof.push(ProofUnit::new(s_vectors[0].clone(),v0.clone()));
-        //     generate_proof(
-        //         &mut proof,
-        //         &mut x.clone(),
-        //         &mut f.clone(),
-        //         &mut s_vectors.clone(),
-        //         &mut s_vectors[0].clone(),
-        //         &mut v0,
-        //         c,
-        //         ell,
-        //         1,
-        //         r,
-        //         n,
-        //         kappa,
-        //         q,
-        //         log_q
-        //     );
-        //     let share = Share{
-        //         c: Digest([0u8;32]),
-        //         y_k: vec![],
-        //         proof: vec![],
-        //         n,
-        //         epoch,
-        //     };
-        //     shares.push((share,pk));
-        // }
 
         let chunk_size = ids.len() / 10 + 1;
         let mut shares: Vec<_> = ids

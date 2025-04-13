@@ -1,29 +1,36 @@
-use log::info;
+use sha2::{Digest as ShaDigest, Sha256};
 use model::types_and_const::{Id, RandomNum, ZqMod};
 use crate::Secret;
 
 pub struct BreezeReconResult{
-    pub value: Secret,
+    pub value: Vec<Secret>,
     // pub epoch: Epoch,
     // pub index: usize,
 }
 
 impl BreezeReconResult {
-    pub fn new(output: Secret ) -> Self {
+    pub fn new(output: Vec<Secret> ) -> Self {
         BreezeReconResult{
             value: output,
             // epoch,
             // index
         }
     }
-    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Secret>, q: ZqMod) -> Secret {
-        
+    pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Vec<Secret>>, q: ZqMod, cumulated: &mut Vec<ZqMod>) {
         let evaluate_points = generate_evaluation_points_n(evaluate_ids, q);
-        Self::lagrange_interpolation_at_zero(&evaluate_points,shares, q)
+        let shares_t = transpose(shares);
+        for (idx,share) in shares_t.iter().enumerate() {
+            let res = Self::lagrange_interpolation_at_zero(&evaluate_points, share, q);
+            cumulated[idx] += res;
+        }
     }
     
+    
+    
     pub fn secret_to_number(&self) -> RandomNum {
-        self.value as RandomNum
+        let hash = vec_to_sha256(&self.value);
+        let res = hash_to_u128(&hash);
+        res
     }
 
     // 根据 t+1 个点计算 f(0)
@@ -83,4 +90,43 @@ fn extended_gcd(a: i128, b: i128) -> (i128, i128, i128) {
         let (g, x, y) = extended_gcd(b % a, a);
         (g, y - (b / a) * x, x)
     }
+}
+
+fn transpose(shares: &Vec<Vec<Secret>>) -> Vec<Vec<Secret>> {
+    if shares.is_empty() || shares[0].is_empty() {
+        return Vec::new();
+    }
+    let rows = shares.len();
+    let cols = shares[0].len();
+    // 确保所有行的长度一致
+    assert!(shares.iter().all(|row| row.len() == cols), "All rows must have the same length");
+    // 创建转置矩阵
+    let mut transposed = vec![vec![Secret::default(); rows]; cols];
+    for i in 0..rows {
+        for j in 0..cols {
+            transposed[j][i] = shares[i][j].clone();
+        }
+    }
+    transposed
+}
+
+fn vec_to_sha256(secrets: &Vec<Secret>) -> [u8; 32] {
+    // 将每个 Secret 转换为字符串并拼接
+    let concatenated: String = secrets.into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    // 计算 SHA-256 哈希
+    let mut hasher = Sha256::new();
+    hasher.update(concatenated);
+    let result = hasher.finalize();
+
+    // 返回固定大小的哈希值
+    result.into()
+}
+
+fn hash_to_u128(hash: &[u8; 32]) -> u128 {
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&hash[..16]);
+    u128::from_be_bytes(bytes)
 }

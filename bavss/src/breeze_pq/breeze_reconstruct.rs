@@ -7,9 +7,9 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use config::Committee;
 use crypto::{Digest, PublicKey};
-use model::breeze_universal::BreezeReconRequest;
+use model::breeze_universal::{BreezeReconRequest};
 use model::types_and_const::{Epoch, Id};
-use crate::breeze_structs::{BreezeContent, BreezeMessage, ReconstructShare, Share, SingleShare};
+use crate::breeze_structs::{ BreezeMessage, PQCrs, ReconstructShare, Share, SingleShare};
 
 pub struct BreezeReconstruct {
     node_id: (PublicKey,Id),
@@ -20,6 +20,7 @@ pub struct BreezeReconstruct {
     network: ReliableSender,
     valid_shares: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Share>>>>,
     cancel_handlers: HashMap<(Epoch, usize), Vec<CancelHandler>>,
+    common_reference_string: Arc<PQCrs>,
 }
 
 impl BreezeReconstruct {
@@ -31,6 +32,7 @@ impl BreezeReconstruct {
         breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
         network: ReliableSender,
         valid_shares: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Share>>>>,
+        common_reference_string: Arc<PQCrs>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -41,6 +43,7 @@ impl BreezeReconstruct {
                 network,
                 valid_shares,
                 cancel_handlers: HashMap::new(),
+                common_reference_string
             }
             .run()
             .await;
@@ -49,9 +52,11 @@ impl BreezeReconstruct {
 
     pub async fn run(&mut self) {
         info!("Breeze reconstruct start to listen");
+        let g = self.common_reference_string.g;
         loop {
             match self.breeze_reconstruct_cmd_receiver.recv().await.unwrap() {
                 message => {
+                    let idx = (message.index - 1) * g;
                     self.breeze_recon_certificate_sender
                         .send((message.c.clone(), message.epoch, message.index))
                         .await
@@ -67,8 +72,8 @@ impl BreezeReconstruct {
                         .map(|(pk, share)| SingleShare {
                             dealer: *pk,
                             c: share.c,
-                            y: share.y_k[message.index].clone(),
-                            merkle_proof: (self.node_id.1,share.merkle_proofs[message.index].clone()),
+                            y: share.y_k[idx..idx+g].to_vec(),
+                            merkle_proof: (self.node_id.1,share.merkle_proofs[idx..idx+g].to_vec()),
                             total_party_num: share.total_party_num,
                         })
                         .collect();

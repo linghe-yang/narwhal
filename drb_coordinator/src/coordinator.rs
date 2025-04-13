@@ -97,6 +97,7 @@ impl Coordinator {
                     }
                 }
                 Some(cc) = self.cc_decided_from_init_consensus.recv()=>{
+                    info!("cc_decided_from_init_consensus");
                     self.certificate_buffer.insert(0, cc);
                     self.decided_common_core.insert(0);
                     self.b_share_cmd_sender.send(1).await.unwrap();

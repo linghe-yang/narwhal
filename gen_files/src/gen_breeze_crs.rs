@@ -1,45 +1,27 @@
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
 #[cfg(not(feature = "pq"))]
 use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 #[cfg(not(feature = "pq"))]
-use curve25519_dalek::{RistrettoPoint, Scalar};
-use num_bigint::{BigUint, RandBigInt, ToBigUint};
-use num_prime::nt_funcs::is_prime;
-use num_traits::{One, ToPrimitive, Zero};
+use curve25519_dalek::Scalar;
+use model::breeze_universal::CommonReferenceString;
 #[cfg(feature = "pq")]
-use rand::Rng;
+use model::types_and_const::ZqMod;
+#[cfg(feature = "pq")]
+use num_bigint::{BigUint, RandBigInt};
+#[cfg(feature = "pq")]
+use num_prime::nt_funcs::is_prime;
+#[cfg(feature = "pq")]
+use num_traits::{One, ToPrimitive, Zero};
 #[cfg(not(feature = "pq"))]
 use rand::rngs::OsRng;
-use model::file_io::Import;
-use serde::{Deserialize, Serialize};
-use model::breeze_universal::CommonReferenceString;
-use model::types_and_const::ZqMod;
-// #[cfg(feature = "pq")]
-// pub type ZqMod = u128;
-// #[cfg(not(feature = "pq"))]
-// #[derive(Debug, Clone,Serialize,Deserialize)]
-// pub struct CommonReferenceString {
-//     pub g: Vec<RistrettoPoint>,
-//     pub h: RistrettoPoint,
-// }
-// #[cfg(feature = "pq")]
-// #[derive(Debug, Clone,Serialize,Deserialize)]
-// pub struct CommonReferenceString {
-//     pub a: Vec<Vec<ZqMod>>,
-//     pub q: ZqMod,
-//     pub n: usize,
-//     pub kappa: usize,
-//     pub r: usize,
-//     pub ell: usize
-// }
-
-// impl Import for CommonReferenceString {}
+#[cfg(feature = "pq")]
+use rand::Rng;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 
 #[cfg(feature = "pq")]
 pub fn generate_crs(n: usize, log_q_approximate: u32, g: usize, kappa: usize, r: usize,ell: usize) {
-    let q = match generate_large_prime(log_q_approximate-1).to_u128(){
+    let q = match generate_large_prime(log_q_approximate).to_u128(){
         Some(q) => q,
         _ => {return;}
     } as ZqMod;
@@ -57,39 +39,68 @@ pub fn generate_crs(n: usize, log_q_approximate: u32, g: usize, kappa: usize, r:
     write_crs_to_json(&crs).expect("Failed to write crs to json");
 }
 
+#[cfg(feature = "pq")]
 fn generate_large_prime(n: u32) -> BigUint {
-    // 计算 2^n
-    let two = 2.to_biguint().unwrap();
-    let base = two.pow(n); // 2^n
-    let upper_bound = two.pow(n + 1); // 2^(n+1) 作为上限
-
     let mut rng = rand::thread_rng();
-    let mut candidate = base.clone();
 
-    // 随机生成一个在 2^n 到 2^(n+1) 之间的数
+    // 计算 2^(n-1) 和 2^n，作为素数的大致范围
+    let lower_bound = BigUint::one() << (n - 1); // 2^(n-1)
+    let upper_bound = (BigUint::one() << n) + (BigUint::one() << (n / 2)); // 2^n + 2^(n/2)
+
     loop {
-        // 在 base 和 upper_bound 之间随机选择
-        let range = &upper_bound - &base;
-        let offset = rng.gen_biguint_below(&range);
-        candidate = base.clone() + offset;
+        // 在 [2^(n-1), 2^n + 2^(n/2)] 范围内随机生成一个数
+        let range = &upper_bound - &lower_bound;
+        let random_offset: BigUint = rng.gen_biguint_range(&BigUint::zero(), &range);
+        let candidate = &lower_bound + random_offset;
 
-        // 确保候选数是奇数（偶数不可能是素数，除了 2）
-        if &candidate % 2u32 == Zero::zero() {
-            candidate += BigUint::one();
-        }
+        // 检查是否为偶数（最低位为 0 表示偶数）
+        let is_even = (&candidate & BigUint::one()).is_zero();
+        // 确保候选数是奇数（素数一定是奇数，除了 2）
+        let candidate = if is_even {
+            candidate + BigUint::one()
+        } else {
+            candidate
+        };
 
-        // 使用 Miller-Rabin 测试素性
+        // 检查是否为素数
         if is_prime(&candidate, None).probably() {
             return candidate;
         }
-
-        // 如果不是素数，继续尝试（这里简单递增，也可以随机重新生成）
-        candidate += BigUint::from(2u32); // 每次加 2，保持奇数
-        if candidate >= upper_bound {
-            candidate = base.clone(); // 如果超出范围，重置到 base
-        }
     }
 }
+// fn generate_large_prime(n: u32) -> BigUint {
+//     // 计算 2^n
+//     let two = 2.to_biguint().unwrap();
+//     let base = two.pow(n); // 2^n
+//     let upper_bound = two.pow(n + 1); // 2^(n+1) 作为上限
+// 
+//     let mut rng = rand::thread_rng();
+//     let mut candidate;
+// 
+//     // 随机生成一个在 2^n 到 2^(n+1) 之间的数
+//     loop {
+//         // 在 base 和 upper_bound 之间随机选择
+//         let range = &upper_bound - &base;
+//         let offset = rng.gen_biguint_below(&range);
+//         candidate = base.clone() + offset;
+// 
+//         // 确保候选数是奇数（偶数不可能是素数，除了 2）
+//         if &candidate % 2u32 == Zero::zero() {
+//             candidate += BigUint::one();
+//         }
+// 
+//         // 使用 Miller-Rabin 测试素性
+//         if is_prime(&candidate, None).probably() {
+//             return candidate;
+//         }
+// 
+//         // 如果不是素数，继续尝试（这里简单递增，也可以随机重新生成）
+//         candidate += BigUint::from(2u32); // 每次加 2，保持奇数
+//         if candidate >= upper_bound {
+//             candidate = base.clone(); // 如果超出范围，重置到 base
+//         }
+//     }
+// }
 
 #[cfg(not(feature = "pq"))]
 pub fn generate_crs(t: usize) {

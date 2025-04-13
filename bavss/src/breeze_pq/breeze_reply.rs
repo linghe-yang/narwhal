@@ -22,7 +22,7 @@ pub struct BreezeReply {
     shares_received: HashMap<Epoch, HashMap<PublicKey, Share>>,
     network: ReliableSender,
     valid_shares: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Share>>>>,
-    common_reference_string: Arc<RwLock<PQCrs>>,
+    common_reference_string: Arc<PQCrs>,
     cancel_handlers: HashMap<Epoch, Vec<CancelHandler>>,
 }
 
@@ -37,7 +37,7 @@ impl BreezeReply {
         merkle_watch_sender:watch::Sender<()>,
         network: ReliableSender,
         valid_shares: Arc<RwLock<HashMap<Epoch, HashMap<PublicKey, Share>>>>,
-        common_reference_string: Arc<RwLock<PQCrs>>,
+        common_reference_string: Arc<PQCrs>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -72,11 +72,10 @@ impl BreezeReply {
                             continue;
                         }
                     };
-                    let crs = self.common_reference_string.read().await;
 
                     if message.sender != self.node_id.0 {
                         if !Shares::verify_shares(
-                            &crs,
+                            &self.common_reference_string,
                             &my_share,
                             self.node_id.1
                         ) {

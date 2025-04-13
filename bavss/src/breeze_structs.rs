@@ -1,9 +1,13 @@
 
+
 use curve25519_dalek::{RistrettoPoint, Scalar};
+#[cfg(feature = "pq")]
 use nalgebra::DMatrix;
 use serde::{Deserialize, Serialize};
 use crypto::{Digest, PublicKey, Signature};
-use model::breeze_universal::{BreezeCertificate, CommonReferenceString};
+#[cfg(feature = "pq")]
+use model::breeze_universal::CommonReferenceString;
+use model::breeze_universal::{BreezeCertificate};
 use model::types_and_const::Epoch;
 
 #[cfg(feature = "pq")]
@@ -24,7 +28,7 @@ pub struct PQCrs{
     pub r: usize,
     pub ell: usize
 }
-
+#[cfg(feature = "pq")]
 impl PQCrs {
     pub fn from(crs: &CommonReferenceString) -> Self {
         let a = &crs.a;
@@ -92,8 +96,8 @@ pub struct SingleShare{
 pub struct SingleShare{
     pub dealer: PublicKey,
     pub c: Digest,
-    pub y: ZqMod,
-    pub merkle_proof: (usize,Vec<u8>),
+    pub y: Vec<ZqMod>,
+    pub merkle_proof: (usize,Vec<Vec<u8>>),
     pub total_party_num: usize,
 }
 #[cfg(not(feature = "pq"))]
@@ -173,7 +177,6 @@ impl ReconstructShare {
     }
 }
 
-#[cfg(feature = "pq")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MerkleRoots {
     pub roots: Vec<Digest>,
@@ -214,6 +217,7 @@ impl BreezeMessage {
         }
     }
 
+    #[cfg(feature = "pq")]
     pub fn new_merkle_message(pk: PublicKey, roots: Vec<Digest>, epoch: Epoch) -> Self {
         BreezeMessage {
             sender: pk,

@@ -20,7 +20,8 @@ def local(ctx, debug=False):
         'tx_size': 512,
         'duration': 20,
         'protocol': 'dolphin',
-        'crypto': 'post_quantum'
+        # 'crypto': 'post_quantum'
+        'crypto': 'origin'
     }
     node_params = {
         'timeout': 1_000,  # ms
@@ -37,7 +38,6 @@ def local(ctx, debug=False):
         print(ret.result())
     except BenchError as e:
         Print.error(e)
-
 
 @task
 def create(ctx, nodes=2):

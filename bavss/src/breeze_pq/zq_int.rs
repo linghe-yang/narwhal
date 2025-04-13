@@ -1,7 +1,6 @@
 use std::fmt;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 use num_modular::{ModularInteger, MontgomeryInt};
-use serde::{Deserialize, Serialize};
 use model::types_and_const::ZqMod;
 
 
