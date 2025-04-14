@@ -211,8 +211,13 @@ impl Proposer {
             let enough_parents = !self.last_parents.is_empty();
             let enough_digests = self.payload_size >= self.header_size;
             let timer_expired = timer.is_elapsed();
+            // let metadata_ready = !self.metadata.is_empty();
+            #[cfg(feature = "dolphin")]
             let metadata_ready = !self.metadata.is_empty();
+            #[cfg(not(feature = "dolphin"))]
+            let metadata_ready = true;
             if (timer_expired || enough_digests) && enough_parents && metadata_ready {
+
                 // Make a new header.
                 self.make_header().await;
                 self.payload_size = 0;
@@ -225,6 +230,7 @@ impl Proposer {
             tokio::select! {
                 Some((parents, round)) = self.rx_core.recv() => {
                     if round < self.round {
+                        debug!("Dag received {} round from rx_core too small, skip", round);
                         continue;
                     }
 

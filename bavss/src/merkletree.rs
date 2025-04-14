@@ -1,6 +1,8 @@
 use rs_merkle::{MerkleTree, algorithms::Sha256, Hasher, MerkleProof};
+#[cfg(not(feature = "pq"))]
 use sha2::{Digest, Sha256 as S256};
 use std::error::Error;
+#[cfg(not(feature = "pq"))]
 use curve25519_dalek::{RistrettoPoint, Scalar};
 use crypto::{Digest as CryptoDigest};
 

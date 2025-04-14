@@ -13,3 +13,4 @@ thiserror = "2.0.12"
 log = "0.4.27"
 [features]
 drb = []
+dolphin = []

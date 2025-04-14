@@ -46,6 +46,7 @@ impl BeaconHub {
             let mut current_epoch = 0;
             let mut current_index = 1;
             loop {
+                sleep(Duration::from_millis(50)).await;
                 beacon_recon_req_sender
                     .send((current_epoch, current_index as usize))
                     .await

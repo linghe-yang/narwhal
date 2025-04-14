@@ -40,7 +40,7 @@ impl Shares {
             let leaf = hasher.finalize().to_vec();
             match verify_merkle_proof(
                 &leaf,
-                (id, share.merkle_proofs[idx].clone()),
+                (id - 1, share.merkle_proofs[idx].clone()),
                 roots[idx],
                 share.total_party_num,
             ) {
@@ -179,7 +179,6 @@ impl Shares {
 
 fn dvec_zint_to_vec_int(v: &DVector<ZqInt>) -> Vec<ZqMod> {
     let res: Vec<_> = v.iter().map(|&z| z.residue()).collect();
-
     res
 }
 fn proof_unit_to_vec(v: &Vec<ProofUnit>) -> Vec<(Vec<ZqMod>, Vec<ZqMod>)> {
@@ -243,14 +242,14 @@ fn transpose_merkle_proofs(matrix: Vec<Vec<(usize, Vec<u8>)>>) -> Vec<(usize, Ve
     let b = matrix.len(); // 行数
     let n = matrix[0].len(); // 列数
 
-    // 验证矩阵是否合法（每行长度一致，且 usize 是 1 到 n）
+    // 验证矩阵是否合法（每行长度一致，且 usize 是 0 到 n-1）
     for row in &matrix {
         if row.len() != n {
             panic!("Invalid matrix: rows have different lengths");
         }
         for (j, &(idx, _)) in row.iter().enumerate() {
-            if idx != j + 1 {
-                panic!("Invalid matrix: usize values must be 1 to n");
+            if idx != j {
+                panic!("Invalid matrix: usize values must be 0 to n-1");
             }
         }
     }

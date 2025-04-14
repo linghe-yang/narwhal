@@ -9,7 +9,7 @@ use config::{Committee, KeyPair, Parameters};
 use consensus::Tusk;
 use drb_coordinator::coordinator::Coordinator;
 use env_logger::Env;
-use model::types_and_const::{WorkerId, BEACON_PER_EPOCH, CHANNEL_CAPACITY, MAX_EPOCH, MAX_WAVE};
+use model::types_and_const::{WorkerId, BEACON_PER_EPOCH, CHANNEL_CAPACITY, MAX_EPOCH};
 #[cfg(feature = "pq")]
 use model::types_and_const::MAX_INDEX;
 use primary::{Certificate, Primary};
@@ -46,8 +46,11 @@ async fn main() -> Result<()> {
                 .args_from_usage("--store=<PATH> 'The path where to create the data store'")
                 .subcommand(
                     SubCommand::with_name("primary")
-                    .about("Run a single primary")
-                    .args_from_usage("--crs=<FILE> 'The common reference string of breeze'"))
+                        .about("Run a single primary")
+                        .args_from_usage("--crs=<FILE> 'The common reference string of breeze'")
+                        .args_from_usage("--bs=<FILE> 'The avss_batch_size configuration'")
+                        .args_from_usage("--le=<FILE> 'The leader_per_epoch configuration'"),
+                )
                 .subcommand(
                     SubCommand::with_name("worker")
                         .about("Run a single worker")
@@ -112,9 +115,19 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     match matches.subcommand() {
         // Spawn the primary and consensus core.
         ("primary", Some(sub_matches)) => {
-            BEACON_PER_EPOCH.set(236).unwrap();
-            MAX_WAVE.set(4).unwrap();
-            MAX_EPOCH.set(20).unwrap();
+            let avss_batch_size = sub_matches
+                .value_of("bs")
+                .unwrap()
+                .parse::<u64>()
+                .expect("avss_batch_size must be a valid number");
+            let leader_per_epoch = sub_matches
+                .value_of("le")
+                .unwrap()
+                .parse::<u64>()
+                .expect("leader_per_epoch must be a valid number");
+            assert!(avss_batch_size >= leader_per_epoch, "avss_batch_size must be greater than leader_per_epoch");
+            BEACON_PER_EPOCH.set(avss_batch_size - leader_per_epoch).unwrap();
+            MAX_EPOCH.set(leader_per_epoch).unwrap();
             let (breeze_share_cmd_sender, breeze_share_cmd_receiver) =
                 channel(CHANNEL_CAPACITY);
             let (breeze_certificate_sender, breeze_certificate_receiver) =
@@ -198,6 +211,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                     /* rx_primary */ rx_new_certificates,
                     tx_commit,
                     tx_output,
+
+                    global_coin_recon_req_sender,
+                    global_coin_res_receiver
                 );
                 let _not_used = tx_metadata;
             }

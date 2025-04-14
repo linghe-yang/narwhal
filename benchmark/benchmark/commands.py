@@ -42,7 +42,7 @@ class CommandMaker:
         return f'./gen_files generate_crs --n {n} --log_q {log_q} --g {g} --kappa {kappa} --r {r} --ell {ell}'
 
     @staticmethod
-    def run_primary(keys, committee, store, crs, parameters, debug=False):
+    def run_primary(keys, committee, store, crs, parameters, avss_batch_size, leader_per_epoch, debug=False):
         assert isinstance(keys, str)
         assert isinstance(committee, str)
         assert isinstance(parameters, str)
@@ -50,7 +50,7 @@ class CommandMaker:
         assert isinstance(debug, bool)
         v = '-vvv' if debug else '-vv'
         return (f'./node {v} run --keys {keys} --committee {committee} '
-                f'--store {store} --parameters {parameters} primary --crs {crs}')
+                f'--store {store} --parameters {parameters} primary --crs {crs} --bs {avss_batch_size} --le {leader_per_epoch}')
 
     @staticmethod
     def run_worker(keys, committee, store, parameters, id, debug=False):

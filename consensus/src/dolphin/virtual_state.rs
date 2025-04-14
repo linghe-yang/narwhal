@@ -140,16 +140,11 @@ impl VirtualState {
     /// Returns the certificate (and the certificate's digest) originated by the fallback leader
     /// of the specified round (if any).
     pub async fn fallback_leader(&self, wave: Round) -> Option<&(Digest, Certificate)> {
-        // TODO: We should elect the leader of round r-2 using the common coin revealed at round r.
+        // Done: TODO: We should elect the leader of round r-2 using the common coin revealed at round r.
         // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
         // compute the coin). We currently just use round-robin.
 
-        println!("wave: {} is electing leader", wave);
-        // #[cfg(test)]
-        // let coin = 0;
-        // #[cfg(not(test))]
-        // let coin = wave;
-
+        // We use randomness beacon to get global coin.
         let coin;
         self.global_coin_recon_req_sender.send(wave).await.unwrap();
         loop {

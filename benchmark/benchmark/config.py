@@ -239,6 +239,49 @@ class BenchParameters:
                 crypto = json['crypto']
                 raise ConfigError(f'Unsupported crypto "{crypto}"')
 
+            self.leader_per_epoch = int(json['leader_per_epoch']) if 'leader_per_epoch' in json else 20
+            if 'n' in json and self.leader_per_epoch <= 0:
+                raise ConfigError('leader_per_epoch must be a positive integer')
+
+            self.avss_batch_size = int(json['avss_batch_size']) if 'avss_batch_size' in json else 200
+            if 'n' in json and self.leader_per_epoch <= 0:
+                raise ConfigError('avss_batch_size must be a positive integer')
+
+            # New fields: n, log_q, g, kappa, r, ell with default 0
+            self.n = int(json['n']) if 'n' in json else 128
+            if 'n' in json and self.n <= 0:
+                raise ConfigError('n must be a positive integer')
+
+            self.log_q = int(json['log_q']) if 'log_q' in json else 32
+            if 'log_q' in json and self.log_q <= 0:
+                raise ConfigError('log_q must be a positive integer')
+
+            self.g = int(json['g']) if 'g' in json else 1
+            if 'g' in json and self.g <= 0:
+                raise ConfigError('g must be a positive integer')
+
+            self.kappa = int(json['kappa']) if 'kappa' in json else 128
+            if 'kappa' in json and self.kappa <= 0:
+                raise ConfigError('kappa must be a positive integer')
+
+            self.r = int(json['r']) if 'r' in json else 2
+            if 'r' in json and self.r <= 0:
+                raise ConfigError('r must be a positive integer')
+
+            self.ell = int(json['ell']) if 'ell' in json else 0
+            if 'ell' in json and self.ell < 0:
+                raise ConfigError('ell must be zero (case no folding) or a positive integer')
+
+            if self.avss_batch_size < self.leader_per_epoch:
+                raise ConfigError('avss_batch_size must be bigger than or equal with leader_per_epoch')
+
+            if self.crypto == 'pq' and (self.n * self.kappa) / self.g != self.avss_batch_size:
+                raise ConfigError('a batch of secrets:(n * kappa) / g must be equal with avss_batch_size(e.g. a batch of randomness)')
+
+            t = (min(self.nodes) - 1) // 3
+            if self.crypto == 'pq' and self.r ** (self.ell + 1) < t + 1:
+                raise ConfigError('r^(ell+1) must be bigger than or equal with t+1, since t+1 is the number of coefficients of polynomials')
+
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

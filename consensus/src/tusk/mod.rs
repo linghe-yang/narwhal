@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::state::{Dag, State};
 use config::{Committee};
@@ -5,7 +8,9 @@ use crypto::Digest;
 use log::{debug, info, log_enabled, warn};
 use primary::{Certificate};
 use tokio::sync::mpsc::{Receiver, Sender};
-use model::types_and_const::{Round, Stake};
+use tokio::sync::RwLock;
+use drb_coordinator::error::DrbError;
+use model::types_and_const::{RandomNum, Round, Stake};
 
 #[cfg(test)]
 #[path = "tests/tusk_tests.rs"]
@@ -27,6 +32,9 @@ pub struct Tusk {
 
     /// The genesis certificates.
     genesis: Vec<Certificate>,
+
+    global_coin_recon_req_sender: Sender<Round>,
+    global_coin_buffer: Arc<RwLock<HashMap<Round, RandomNum>>>,
 }
 
 impl Tusk {
@@ -36,7 +44,28 @@ impl Tusk {
         rx_primary: Receiver<Certificate>,
         tx_primary: Sender<Certificate>,
         tx_output: Sender<Certificate>,
+
+        global_coin_recon_req_sender: Sender<Round>,
+        mut global_coin_res_receiver: Receiver<(Round, Result<RandomNum, DrbError>)>
     ) {
+        let global_coin_buffer= Arc::new(RwLock::new(HashMap::new()));
+        let buffer_ref = Arc::clone(&global_coin_buffer);
+        let s = global_coin_recon_req_sender.clone();
+
+        tokio::spawn(async move {
+            loop{
+                let res = global_coin_res_receiver.recv().await.unwrap();
+                if let Ok(random_num) = res.1 {
+                    let mut write_lock = buffer_ref.write().await;
+                    write_lock.insert(res.0, random_num);
+                    drop(write_lock);
+                } else {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    s.send(res.0).await.unwrap();
+                }
+            }
+        });
+
         tokio::spawn(async move {
             Self {
                 committee: committee.clone(),
@@ -45,6 +74,9 @@ impl Tusk {
                 tx_primary,
                 tx_output,
                 genesis: Certificate::genesis(&committee),
+
+                global_coin_recon_req_sender,
+                global_coin_buffer:Arc::clone(&global_coin_buffer)
             }
             .run()
             .await;
@@ -52,6 +84,7 @@ impl Tusk {
     }
 
     async fn run(&mut self) {
+        debug!("Starting Tusk");
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.gc_depth, self.genesis.clone());
 
@@ -78,7 +111,7 @@ impl Tusk {
             if leader_round <= state.last_committed_round {
                 continue;
             }
-            let (leader_digest, leader) = match self.leader(leader_round, &state.dag) {
+            let (leader_digest, leader) = match self.leader(leader_round, &state.dag).await {
                 Some(x) => x,
                 None => continue,
             };
@@ -104,7 +137,7 @@ impl Tusk {
             // Get an ordered list of past leaders that are linked to the current leader.
             debug!("Leader {:?} has enough support", leader);
             let mut sequence = Vec::new();
-            for leader in self.order_leaders(leader, &state).iter().rev() {
+            for leader in self.order_leaders(leader, &state).await.iter().rev() {
                 // Starting from the oldest leader, flatten the sub-dag referenced by the leader.
                 for x in state.flatten(leader) {
                     // Update and clean up internal state.
@@ -147,14 +180,22 @@ impl Tusk {
 
     /// Returns the certificate (and the certificate's digest) originated by the leader of the
     /// specified round (if any).
-    fn leader<'a>(&self, round: Round, dag: &'a Dag) -> Option<&'a (Digest, Certificate)> {
+    async fn leader<'a>(&self, round: Round, dag: &'a Dag) -> Option<&'a (Digest, Certificate)> {
         // TODO: We should elect the leader of round r-2 using the common coin revealed at round r.
         // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
         // compute the coin). We currently just use round-robin.
-        #[cfg(test)]
-        let coin = 0;
-        #[cfg(not(test))]
-        let coin = round;
+        info!("start to elect leader for round:{}", round);
+        let coin;
+        self.global_coin_recon_req_sender.send(round).await.unwrap();
+        loop {
+            match self.global_coin_buffer.read().await.get(&round) {
+                Some(r) => {
+                    coin = *r;
+                    break;
+                }
+                _ => {}
+            }
+        }
 
         // Elect the leader.
         let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
@@ -166,15 +207,19 @@ impl Tusk {
     }
 
     /// Order the past leaders that we didn't already commit.
-    fn order_leaders(&self, leader: &Certificate, state: &State) -> Vec<Certificate> {
+    async fn order_leaders(&self, leader: &Certificate, state: &State) -> Vec<Certificate> {
         let mut to_commit = vec![leader.clone()];
         let mut leader = leader;
-        for r in (state.last_committed_round + 2..leader.round())
+        // for r in (state.last_committed_round + 2..leader.round()) //original: r-sequence is odd numbers
+        for r in (state.last_committed_round + 2..=leader.round())
             .rev()
             .step_by(2)
         {
+            if r % 2 != 0 {
+                panic!("r: {} error", r);
+            }
             // Get the certificate proposed by the previous leader.
-            let (_, prev_leader) = match self.leader(r, &state.dag) {
+            let (_, prev_leader) = match self.leader(r, &state.dag).await {
                 Some(x) => x,
                 None => continue,
             };

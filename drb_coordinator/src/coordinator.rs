@@ -118,7 +118,10 @@ impl Coordinator {
                 }
 
                 Some(round) = self.global_coin_recon_req_receiver.recv() =>{
+                    #[cfg(feature = "dolphin")]
                     let (mut epoch, index) = leader_round_to_epoch_index(round, max_epoch);
+                    #[cfg(not(feature = "dolphin"))]
+                    let (mut epoch, index) = leader_round_to_epoch_index_tusk(round, max_epoch);
                     if index > max_epoch as usize {
                         self.global_coin_res_sender.send((round,Err(DrbError::InvalidIndex))).await.unwrap();
                         continue;
@@ -172,7 +175,10 @@ impl Coordinator {
                 Some((epoch,index,value)) = self.b_recon_res_receiver.recv() =>{
                     self.beacon_reconstructed.insert((epoch,index),value);
                     if index <= max_epoch as usize{
+                        #[cfg(feature = "dolphin")]
                         let round = epoch_index_to_leader_round(epoch +1,index,max_epoch);
+                        #[cfg(not(feature = "dolphin"))]
+                        let round = epoch_index_to_leader_round_tusk(epoch +1,index,max_epoch);
                         self.global_coin_res_sender.send((round,Ok(value))).await.unwrap();
                     } else if index <= (max_epoch+ beacon_per_epoch) as usize{
                         self.beacon_res_sender.send(((epoch,index - max_epoch as usize),Ok(value))).await.unwrap();

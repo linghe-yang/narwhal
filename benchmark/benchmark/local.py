@@ -84,15 +84,10 @@ class LocalBench:
             names = [x.name for x in keys]
             committee = LocalCommittee(names, self.BASE_PORT, self.workers)
             committee.print(PathMaker.committee_file())
+
             # generate crs file
             if self.crypto == 'pq':
-                n = 32
-                log_q = 32
-                g = 4
-                kappa = 32
-                r = 2
-                ell = 1
-                cmd = CommandMaker.generate_crs_q(n, log_q, g, kappa, r, ell).split()
+                cmd = CommandMaker.generate_crs_q(self.n, self.log_q, self.g, self.kappa, self.r, self.ell).split()
                 subprocess.run(cmd, check=True)
             else:
                 fault_tolerance = (len(names) - 1) // 3
@@ -124,6 +119,8 @@ class LocalBench:
                     PathMaker.db_path(i),
                     PathMaker.crs_file(),
                     PathMaker.parameters_file(),
+                    self.avss_batch_size,
+                    self.leader_per_epoch,
                     debug=debug
                 )
                 log_file = PathMaker.primary_log_file(i)

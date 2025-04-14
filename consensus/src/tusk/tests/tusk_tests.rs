@@ -101,12 +101,19 @@ async fn commit_one() {
     let (tx_waiter, rx_waiter) = channel(1);
     let (tx_primary, mut rx_primary) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
+
+    let (global_coin_recon_req_sender, _global_coin_recon_req_receiver) =
+        channel(1);
+    let (_global_coin_res_sender, global_coin_res_receiver) =
+        channel(1);
     Tusk::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
         tx_primary,
         tx_output,
+        global_coin_recon_req_sender,
+        global_coin_res_receiver
     );
     tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
 
@@ -146,12 +153,18 @@ async fn dead_node() {
     let (tx_waiter, rx_waiter) = channel(1);
     let (tx_primary, mut rx_primary) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
+    let (global_coin_recon_req_sender, _global_coin_recon_req_receiver) =
+        channel(1);
+    let (_global_coin_res_sender, global_coin_res_receiver) =
+        channel(1);
     Tusk::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
         tx_primary,
         tx_output,
+        global_coin_recon_req_sender,
+        global_coin_res_receiver
     );
     tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
 
@@ -234,12 +247,19 @@ async fn not_enough_support() {
     let (tx_waiter, rx_waiter) = channel(1);
     let (tx_primary, mut rx_primary) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
+
+    let (global_coin_recon_req_sender, _global_coin_recon_req_receiver) =
+        channel(1);
+    let (_global_coin_res_sender, global_coin_res_receiver) =
+        channel(1);
     Tusk::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
         tx_primary,
         tx_output,
+        global_coin_recon_req_sender,
+        global_coin_res_receiver
     );
     tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
 
@@ -297,12 +317,19 @@ async fn missing_leader() {
     let (tx_waiter, rx_waiter) = channel(1);
     let (tx_primary, mut rx_primary) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
+
+    let (global_coin_recon_req_sender, _global_coin_recon_req_receiver) =
+        channel(1);
+    let (_global_coin_res_sender, global_coin_res_receiver) =
+        channel(1);
     Tusk::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
         tx_primary,
         tx_output,
+        global_coin_recon_req_sender,
+        global_coin_res_receiver
     );
     tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
 

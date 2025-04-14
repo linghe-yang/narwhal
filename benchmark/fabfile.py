@@ -10,17 +10,19 @@ from benchmark.remote import Bench, BenchError
 
 
 @task
-def local(ctx, debug=False):
+def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': 10,
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
         'protocol': 'dolphin',
-        'crypto': 'origin'
+        'crypto': 'origin',
+        'avss_batch_size': 200,
+        'leader_per_epoch': 20
     }
     node_params = {
         'timeout': 1_000,  # ms
@@ -48,8 +50,16 @@ def local_pq(ctx, debug=False):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'dolphin',
-        'crypto': 'post_quantum'
+        'protocol': 'tusk',
+        'crypto': 'post_quantum',
+        'avss_batch_size': 1024,
+        'leader_per_epoch': 20,
+        "n": 64,
+        "log_q": 32,
+        "g": 4,
+        "kappa": 64,
+        "r": 2,
+        "ell": 0
     }
     node_params = {
         'timeout': 1_000,  # ms
