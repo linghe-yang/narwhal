@@ -2,7 +2,7 @@
 use crate::state::Dag;
 use config::Committee;
 use crypto::{Digest, Hash as _, PublicKey};
-use log::debug;
+use log::{debug};
 use primary::{Certificate};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -145,12 +145,13 @@ impl VirtualState {
         // compute the coin). We currently just use round-robin.
 
         // We use randomness beacon to get global coin.
+        let wave = if wave % 2 == 0 {wave -1 } else { wave };
+
         let coin;
         self.global_coin_recon_req_sender.send(wave).await.unwrap();
         loop {
             match self.global_coin_buffer.read().await.get(&wave) {
                 Some(r) => {
-                    println!("random for round: {} is {}", wave, r);
                     coin = *r;
                     break;
                 }

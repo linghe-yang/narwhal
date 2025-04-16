@@ -22,11 +22,11 @@ impl Shares {
     pub fn verify_shares(
         crs: &PQCrs,
         share: &Share,
-        id: Id
+        id: Id,
     ) -> bool {
         let proofs: Vec<_> = share.eval_proof.iter().map(|p| ProofUnit::from_residue_vecs(p, crs.q)).collect();
-        let t = vec_to_dvec(&share.t, crs.q);
-        let u = vec_to_dvec(&share.y_k, crs.q);
+        let t = t_vec_to_dvec(&share.t, crs.q);
+        let u = u_vec_to_dvec(&share.y_k, crs.q, crs.kappa * crs.n);
         let x = generate_x_vectors(ZqInt::new(id as ZqMod, crs.q), crs.ell, crs.r);
         verify_proofs(&proofs, &crs.a, t, u, x, crs.ell, crs.r, crs.kappa, crs.n, crs.q, crs.log_q)
     }
@@ -108,7 +108,7 @@ impl Shares {
             .map(|opt| opt.unwrap()) // 如果有 None，这里会 panic
             .collect();
 
-        let t_vec = dvec_zint_to_vec_int(&t);
+        let t_vec = t_dvec_2_t_vec(&t);
         let t_vec_hash = hash_c(&t_vec);
 
         let chunk_size = ids.len() / 10 + 1;
@@ -155,7 +155,7 @@ impl Shares {
                         let share = Share {
                             t: t_vec.clone(),
                             c: t_vec_hash.clone(),
-                            y_k: dvec_zint_to_vec_int(&u),
+                            y_k: u_dvec_2_u_vec(&u, batch_size * g),
                             merkle_proofs: Vec::default(),
                             eval_proof: proof_unit_to_vec(&proof),
                             epoch,
@@ -177,8 +177,12 @@ impl Shares {
     }
 }
 
-fn dvec_zint_to_vec_int(v: &DVector<ZqInt>) -> Vec<ZqMod> {
+fn t_dvec_2_t_vec(v: &DVector<ZqInt>) -> Vec<ZqMod> {
     let res: Vec<_> = v.iter().map(|&z| z.residue()).collect();
+    res
+}
+fn u_dvec_2_u_vec(v: &DVector<ZqInt>, g_batch_size: usize) -> Vec<ZqMod> {
+    let res: Vec<_> = v.iter().take(g_batch_size).map(|&z| z.residue()).collect();
     res
 }
 fn proof_unit_to_vec(v: &Vec<ProofUnit>) -> Vec<(Vec<ZqMod>, Vec<ZqMod>)> {
@@ -273,6 +277,17 @@ fn transpose_merkle_proofs(matrix: Vec<Vec<(usize, Vec<u8>)>>) -> Vec<(usize, Ve
     result
 }
 
-fn vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod) -> DVector<ZqInt> {
+// fn vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod) -> DVector<ZqInt> {
+//     DVector::from_vec(vec.iter().map(|&ele| ZqInt::new(ele, q)).collect())
+// }
+fn u_vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod, kappa_n: usize) -> DVector<ZqInt> {
+    if vec.len() > kappa_n {
+        panic!("Input vector length {} exceeds kappa_n {}", vec.len(), kappa_n);
+    }
+    let mut result: Vec<ZqInt> = vec.iter().map(|&ele| ZqInt::new(ele, q)).collect();
+    result.resize(kappa_n, ZqInt::new(0, q));
+    DVector::from_vec(result)
+}
+fn t_vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod) -> DVector<ZqInt> {
     DVector::from_vec(vec.iter().map(|&ele| ZqInt::new(ele, q)).collect())
 }

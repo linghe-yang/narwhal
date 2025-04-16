@@ -77,7 +77,7 @@ impl BreezeReply {
                         if !Shares::verify_shares(
                             &self.common_reference_string,
                             &my_share,
-                            self.node_id.1
+                            self.node_id.1,
                         ) {
                             continue;
                         }

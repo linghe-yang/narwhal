@@ -9,7 +9,7 @@ pub type WorkerId = u32;
 
 pub type RandomNum = u128;
 #[cfg(feature = "pq")]
-pub type ZqMod = u128;
+pub type ZqMod = u64;
 
 pub static BEACON_PER_EPOCH: OnceLock<u64> = OnceLock::new();
 pub static MAX_EPOCH: OnceLock<u64> = OnceLock::new();

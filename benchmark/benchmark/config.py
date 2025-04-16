@@ -275,8 +275,8 @@ class BenchParameters:
             if self.avss_batch_size < self.leader_per_epoch:
                 raise ConfigError('avss_batch_size must be bigger than or equal with leader_per_epoch')
 
-            if self.crypto == 'pq' and (self.n * self.kappa) / self.g != self.avss_batch_size:
-                raise ConfigError('a batch of secrets:(n * kappa) / g must be equal with avss_batch_size(e.g. a batch of randomness)')
+            if self.crypto == 'pq' and (self.n * self.kappa) / self.g < self.avss_batch_size:
+                raise ConfigError('a batch of secrets:(n * kappa) / g must be bigger than or equal with avss_batch_size(e.g. a batch of randomness)')
 
             t = (min(self.nodes) - 1) // 3
             if self.crypto == 'pq' and self.r ** (self.ell + 1) < t + 1:

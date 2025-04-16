@@ -80,7 +80,7 @@ fn mod_inverse(a: ZqMod, q: ZqMod) -> ZqMod {
     if g != 1 {
         panic!("Modular inverse does not exist");
     }
-    ((x % (q as i128) + q as i128) % (q as i128)) as u128
+    ((x % (q as i128) + q as i128) % (q as i128)) as ZqMod
 }
 
 fn extended_gcd(a: i128, b: i128) -> (i128, i128, i128) {

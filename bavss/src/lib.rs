@@ -41,7 +41,7 @@ mod test {
         
         let batch_size = (n* kappa) / 4;
         let q: ZqMod;
-        if let Some(m) = generate_large_prime(32).to_u128() {
+        if let Some(m) = generate_large_prime(32).to_u64() {
             q = m;
         } else {
             return;

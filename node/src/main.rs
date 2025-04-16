@@ -1,5 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 
+use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use model::file_io::Export;
@@ -16,6 +17,7 @@ use primary::{Certificate, Primary};
 // use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::time::sleep;
 // use tokio::sync::RwLock;
 use bavss::Breeze;
 use secondary_bft::init_bft::InitBFT;
@@ -162,6 +164,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             let id = committee.get_id(&keypair.name).unwrap();
             let bft_address = committee.init_bft_address(&keypair.name)?;
 
+            let secret_size = (crs.n * crs.kappa) as f64;
+            let committee_size = committee.size();
+            let slag = secret_size / 400f64 + secret_size / 4000f64 * committee_size as f64;
             Breeze::spawn(
                 keypair.clone(),
                 address,
@@ -200,6 +205,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 global_coin_res_sender,
                 beacon_res_sender,
             ).await;
+            sleep(Duration::from_secs(slag as u64)).await;
+
             let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
             let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
             let (tx_metadata, rx_metadata) = channel(CHANNEL_CAPACITY);

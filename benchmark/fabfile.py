@@ -14,7 +14,7 @@ def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 10,
+        'nodes': 4,
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
@@ -49,20 +49,20 @@ def local_pq(ctx, debug=False):
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
-        'duration': 20,
-        'protocol': 'tusk',
+        'duration': 10,
+        'protocol': 'dolphin',
         'crypto': 'post_quantum',
-        'avss_batch_size': 1024,
-        'leader_per_epoch': 20,
-        "n": 64,
+        'avss_batch_size': 256,
+        'leader_per_epoch': 50,
+        "n": 32,
         "log_q": 32,
         "g": 4,
-        "kappa": 64,
+        "kappa": 32,
         "r": 2,
         "ell": 0
     }
     node_params = {
-        'timeout': 1_000,  # ms
+        'timeout': 5_000,  # ms
         'header_size': 1_000,  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
@@ -72,7 +72,7 @@ def local_pq(ctx, debug=False):
         'max_batch_delay': 200  # ms
     }
     try:
-        ret = LocalBench(bench_params, node_params).run(debug)
+        ret = LocalBench(bench_params, node_params).run_pq(debug)
         print(ret.result())
     except BenchError as e:
         Print.error(e)
