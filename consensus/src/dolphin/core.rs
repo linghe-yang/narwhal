@@ -71,6 +71,7 @@ impl Dolphin {
     }
 
     async fn run(&mut self, global_coin_recon_req_sender: Sender<Round>,global_coin_res_receiver: Receiver<(Round,Result<RandomNum, DrbError>)>) {
+        info!("Starting Consensus...");
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.gc_depth, self.genesis.clone());
         let mut virtual_state = VirtualState::new(self.committee.clone(), self.genesis.clone(), global_coin_recon_req_sender, global_coin_res_receiver);

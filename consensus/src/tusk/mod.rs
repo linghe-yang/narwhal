@@ -84,7 +84,7 @@ impl Tusk {
     }
 
     async fn run(&mut self) {
-        debug!("Starting Tusk");
+        info!("Starting Consensus...");
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.gc_depth, self.genesis.clone());
 

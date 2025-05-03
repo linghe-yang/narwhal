@@ -5,7 +5,7 @@ use model::types_and_const::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 
 pub struct Coordinator {
     committee: Arc<RwLock<Committee>>,
@@ -35,6 +35,8 @@ pub struct Coordinator {
 
     decided_common_core: HashSet<Epoch>,
     beacon_reconstructed: HashMap<(Epoch, usize), RandomNum>,
+    
+    recover_signal_sender: watch::Sender<()>
 }
 
 impl Coordinator {
@@ -53,6 +55,8 @@ impl Coordinator {
         b_recon_res_receiver: Receiver<(Epoch, usize, RandomNum)>,
         global_coin_res_sender: Sender<(Round, Result<RandomNum, DrbError>)>,
         beacon_res_sender: Sender<((Epoch, usize),Result<RandomNum, DrbError>)>,
+
+        recover_signal_sender: watch::Sender<()>
     ) {
         let certificate_buffer = HashMap::new();
         let decided_common_core = HashSet::new();
@@ -77,6 +81,7 @@ impl Coordinator {
                 certificate_buffer,
                 decided_common_core,
                 beacon_reconstructed,
+                recover_signal_sender
             }
             .run()
             .await;
@@ -99,6 +104,7 @@ impl Coordinator {
                     self.certificate_buffer.insert(0, cc);
                     self.decided_common_core.insert(0);
                     self.b_share_cmd_sender.send(1).await.unwrap();
+                    self.recover_signal_sender.send(()).unwrap();
                 }
                 Some(cer) = self.cer_decided_from_consensus.recv() =>{
                     let epoch = cer.epoch;

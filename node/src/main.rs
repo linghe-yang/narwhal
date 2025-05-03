@@ -16,10 +16,11 @@ use primary::{Certificate, Primary};
 // use std::sync::Arc;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-#[cfg(feature = "pq")]
-use tokio::time::sleep;
-#[cfg(feature = "pq")]
-use std::time::Duration;
+// #[cfg(feature = "pq")]
+// use tokio::time::sleep;
+// #[cfg(feature = "pq")]
+// use std::time::Duration;
+use tokio::sync::watch;
 // use tokio::sync::RwLock;
 use bavss::Breeze;
 use secondary_bft::init_bft::InitBFT;
@@ -166,10 +167,10 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             let id = committee.get_id(&keypair.name).unwrap();
             let mut bft_address = committee.init_bft_address(&keypair.name)?;
             bft_address.set_ip("0.0.0.0".parse()?);
-            #[cfg(feature = "pq")]
-            let secret_size = (crs.n * crs.kappa) as f64;
-            #[cfg(feature = "pq")]
-            let slag = secret_size / 400f64 + secret_size / 4000f64 * committee.size() as f64;
+            // #[cfg(feature = "pq")]
+            // let secret_size = (crs.n * crs.kappa) as f64;
+            // #[cfg(feature = "pq")]
+            // let slag = secret_size / 400f64 + secret_size / 4000f64 * committee.size() as f64;
             Breeze::spawn(
                 keypair.clone(),
                 address,
@@ -192,6 +193,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             ).await;
             // let committee = Arc::new(RwLock::new(committee));
 
+            let (recover_signal_sender, mut recover_signal_receiver) = watch::channel(());
             Coordinator::spawn(
                 // Arc::clone(&committee),
                 committee.clone(),
@@ -207,9 +209,13 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 breeze_result_receiver,
                 global_coin_res_sender,
                 beacon_res_sender,
+
+                recover_signal_sender
             ).await;
-            #[cfg(feature = "pq")]
-            sleep(Duration::from_secs(slag as u64)).await;
+            // #[cfg(feature = "pq")]
+            // sleep(Duration::from_secs(slag as u64)).await;
+
+            recover_signal_receiver.changed().await?;
 
             let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
             let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);

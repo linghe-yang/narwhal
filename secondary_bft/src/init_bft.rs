@@ -205,7 +205,7 @@ impl InitBFT {
             .map(|x| x.1)
             .collect::<Vec<_>>();
         let bytes = bincode::serialize(&message)
-            .expect("Failed to serialize shares for reconstruction in BreezeReconstruct");
+            .expect("Failed to serialize mes in init_bft");
         let handlers = self.network.broadcast(addresses, Bytes::from(bytes)).await;
         self.cancel_handlers
             .entry(label)

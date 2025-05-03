@@ -126,6 +126,10 @@ class LocalBench:
                 log_file = PathMaker.primary_log_file(i)
                 self._background_run(cmd, log_file)
 
+            if self.crypto == 'pq':
+                secret_size = self.n * self.kappa
+                slag = secret_size / 400 + secret_size / 4000 * min(self.nodes)
+                sleep(slag)
             # Run the workers (except the faulty ones).
             for i, addresses in enumerate(workers_addresses):
                 for (id, address) in addresses:

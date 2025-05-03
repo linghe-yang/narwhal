@@ -10,7 +10,7 @@ from benchmark.remote import Bench, BenchError
 
 
 @task
-def local(ctx, debug=True):
+def local(ctx, debug=False):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
@@ -19,7 +19,7 @@ def local(ctx, debug=True):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'tusk',
+        'protocol': 'dolphin',
         'crypto': 'origin',
         'avss_batch_size': 200,
         'leader_per_epoch': 20
@@ -50,7 +50,7 @@ def local_pq(ctx, debug=False):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'tusk',
+        'protocol': 'dolphin',
         'crypto': 'post_quantum',
         'avss_batch_size': 256,
         'leader_per_epoch': 20,
@@ -72,7 +72,7 @@ def local_pq(ctx, debug=False):
         'max_batch_delay': 200  # ms
     }
     try:
-        ret = LocalBench(bench_params, node_params).run_pq(debug)
+        ret = LocalBench(bench_params, node_params).run(debug)
         print(ret.result())
     except BenchError as e:
         Print.error(e)

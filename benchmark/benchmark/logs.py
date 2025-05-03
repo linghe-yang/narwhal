@@ -44,10 +44,12 @@ class LogParser:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips, beacons = zip(*results)
+        proposals, commits, self.configs, primary_ips, beacons, start_times, end_times = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
         self.beacons_per_primary = beacons  # add beacon
+        self.start_times = start_times
+        self.end_times = end_times
 
         # Parse the workers logs.
         try:
@@ -144,7 +146,15 @@ class LogParser:
             }
             for t, e, i, v in tmp
         ]
-        return proposals, commits, configs, ip, beacons
+        start_pattern = r'\[(.*Z) .* Starting Consensus\.\.\.'
+        start_match = search(start_pattern, log)
+        start_time = self._to_posix(start_match.group(1)) if start_match else None
+
+        timestamp_pattern = r'\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)'
+        timestamps18 = findall(timestamp_pattern, log)
+        end_time = self._to_posix(timestamps18[-1]) if timestamps18 else None
+
+        return proposals, commits, configs, ip, beacons, start_time, end_time
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:
@@ -199,18 +209,32 @@ class LogParser:
                     latency += [end-start]
         return mean(latency) if latency else 0
 
+    # def _beacon_rate_per_primary(self):
+    #     """calculate beacon rate for each primary"""
+    #     rates = []
+    #     for idx, beacons in enumerate(self.beacons_per_primary):
+    #         if not beacons:
+    #             rates.append((f'Primary-{idx}', 0))
+    #             continue
+    #         timestamps = [b['timestamp'] for b in beacons]
+    #         duration = max(timestamps) - min(timestamps) if timestamps else 0
+    #         count = len(beacons)
+    #         rate = count / duration if duration > 0 else 0
+    #         rates.append((f'Primary-{idx}', rate))
+    #     return rates
     def _beacon_rate_per_primary(self):
-        """calculate beacon rate for each primary"""
+        """Calculate beacon rate for each primary using consensus start and process end time."""
         rates = []
-        for idx, beacons in enumerate(self.beacons_per_primary):
-            if not beacons:
-                rates.append((f'Primary-{idx}', 0))
+        for idx, (beacons, start_time, end_time) in enumerate(
+                zip(self.beacons_per_primary, self.start_times, self.end_times)):
+            primary_name = f'Primary-{idx}'
+            if not beacons or start_time is None or end_time is None:
+                rates.append((primary_name, 0))
                 continue
-            timestamps = [b['timestamp'] for b in beacons]
-            duration = max(timestamps) - min(timestamps) if timestamps else 0
+            duration = end_time - start_time if end_time > start_time else 0
             count = len(beacons)
             rate = count / duration if duration > 0 else 0
-            rates.append((f'Primary-{idx}', rate))
+            rates.append((primary_name, rate))
         return rates
 
     def _beacon_errors(self):
@@ -280,7 +304,7 @@ class LogParser:
             ' + BEACON RESULTS:\n'
         )
         for primary_name, rate in beacon_rates:
-            output += f' {primary_name} Beacon Rate: {round(rate):,} beacons/s\n'
+            output += f' {primary_name} Beacon Rate: {rate:,.3f} beacons/s\n'
         output += f' Beacon Equivocations: {beacon_errors:,}\n'
         output += '-----------------------------------------\n'
 
