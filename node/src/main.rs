@@ -164,8 +164,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             let mut address = committee.breeze_address(&keypair.name)?;
             address.set_ip("0.0.0.0".parse()?);
             let id = committee.get_id(&keypair.name).unwrap();
-            let bft_address = committee.init_bft_address(&keypair.name)?;
-
+            let mut bft_address = committee.init_bft_address(&keypair.name)?;
+            bft_address.set_ip("0.0.0.0".parse()?);
             #[cfg(feature = "pq")]
             let secret_size = (crs.n * crs.kappa) as f64;
             #[cfg(feature = "pq")]

@@ -60,19 +60,19 @@ class Bench:
             'sudo apt-get -y autoremove',
 
             # The following dependencies prevent the error: [error: linker `cc` not found].
-            'sudo apt-get -y install build-essential',
-            'sudo apt-get -y install cmake',
+            # 'sudo apt-get -y install build-essential',
+            # 'sudo apt-get -y install cmake',
 
             # Install rust (non-interactive).
-            'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
-            'source $HOME/.cargo/env',
-            'rustup default stable',
+            # 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
+            # 'source $HOME/.cargo/env',
+            # 'rustup default stable',
 
             # This is missing from the Rocksdb installer (needed for Rocksdb).
             'sudo apt-get install -y clang',
 
             # Clone the repo.
-            f'(git clone {self.settings.repo_url} || (cd {self.settings.repo_name} ; git pull))'
+            # f'(git clone {self.settings.repo_url} || (cd {self.settings.repo_name} ; git pull))'
         ]
         hosts = self.manager.hosts(flat=True)
         try:
@@ -175,13 +175,9 @@ class Bench:
         try:
             # Compile locally
             Print.info('Compiling locally in ~/narwhal/node...')
-            compile_cmd = CommandMaker.compile(protocol, crypto).split()
+            compile_cmd = CommandMaker.compile(protocol, crypto)
             subprocess.run(
-                compile_cmd,
-                cwd=node_path,
-                check=True,
-                capture_output=True,
-                text=True
+                [compile_cmd], shell=True, check=True, cwd=node_path
             )
         except subprocess.CalledProcessError as e:
             raise BenchError(f'Failed to compile locally: {e.stderr}', e)

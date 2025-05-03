@@ -19,7 +19,7 @@ def local(ctx, debug=True):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'dolphin',
+        'protocol': 'tusk',
         'crypto': 'origin',
         'avss_batch_size': 200,
         'leader_per_epoch': 20
@@ -50,7 +50,7 @@ def local_pq(ctx, debug=False):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'dolphin',
+        'protocol': 'tusk',
         'crypto': 'post_quantum',
         'avss_batch_size': 256,
         'leader_per_epoch': 20,
@@ -78,7 +78,7 @@ def local_pq(ctx, debug=False):
         Print.error(e)
 
 @task
-def create(ctx, nodes=2):
+def create(ctx, nodes=4):
     ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
@@ -141,7 +141,7 @@ def remote(ctx, debug=True):
         'collocate': True,
         'rate': [50_000],
         'tx_size': 512,
-        'duration': 300,
+        'duration': 40,
         'runs': 1,
         'protocol': 'dolphin',
         'crypto': 'origin',
