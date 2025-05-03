@@ -49,7 +49,7 @@ def local_pq(ctx, debug=False):
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
-        'duration': 80,
+        'duration': 20,
         'protocol': 'dolphin',
         'crypto': 'post_quantum',
         'avss_batch_size': 256,

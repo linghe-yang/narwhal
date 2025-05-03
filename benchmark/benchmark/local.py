@@ -247,7 +247,6 @@ class LocalBench:
             secret_size = self.n * self.kappa
             slag = secret_size / 400 + secret_size / 4000 * min(self.nodes)
             sleep(slag)
-            sleep(50)
 
             # Run the workers (except the faulty ones).
             for i, addresses in enumerate(workers_addresses):
