@@ -10,7 +10,7 @@ use std::net::SocketAddr;
 use network::{Receiver as NetworkReceiver, ReliableSender};
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock};
 use config::{Committee, KeyPair};
 use model::breeze_universal::{BreezeCertificate, BreezeReconRequest, CommonReferenceString};
 use model::types_and_const::{Epoch, Id, RandomNum, CHANNEL_CAPACITY};
@@ -51,7 +51,7 @@ impl Breeze {
         
         let my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>> = Arc::new(RwLock::new(HashMap::new()));
         let merkle_roots_received: Arc<RwLock<HashMap<Epoch,HashMap<PublicKey,Vec<Digest>>>>> = Arc::new(RwLock::new(HashMap::new()));
-        let (merkle_watch_sender, merkle_watch_receiver) = watch::channel(());
+        let (merkle_watch_sender, merkle_watch_receiver) = channel::<Epoch>(CHANNEL_CAPACITY);
         
         let common_reference_string = Arc::new(PQCrs::from(&common_reference_string));
         
@@ -90,11 +90,11 @@ impl Breeze {
             Arc::clone(&valid_shares),
             Arc::clone(&common_reference_string),
         );
-        let committee = Arc::new(RwLock::new(committee));
+        // let committee = Arc::new(RwLock::new(committee));
         //confirm phase
         BreezeConfirm::spawn(
             node_id,
-            Arc::clone(&committee),
+            committee.clone(),
             breeze_confirm_receiver,
             breeze_certificate_sender,
             Arc::clone(&my_dealer_shares),
@@ -103,7 +103,7 @@ impl Breeze {
         BreezeReply::spawn(
             node_id,
             sk,
-            Arc::clone(&committee),
+            committee.clone(),
             breeze_share_receiver,
             breeze_merkle_roots_receiver,
             merkle_roots_received,
@@ -116,7 +116,7 @@ impl Breeze {
         //share phase
         BreezeShare::spawn(
             node_id,
-            Arc::clone(&committee),
+            committee.clone(),
             breeze_share_cmd_receiver,
             ReliableSender::new(),
             Arc::clone(&common_reference_string),

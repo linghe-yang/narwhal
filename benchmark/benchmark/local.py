@@ -216,6 +216,20 @@ class LocalBench:
 
             self.node_parameters.print(PathMaker.parameters_file())
 
+            workers_addresses = committee.workers_addresses(self.faults)
+            # Run the clients (they will wait for the nodes to be ready).
+            rate_share = ceil(rate / committee.workers())
+            for i, addresses in enumerate(workers_addresses):
+                for (id, address) in addresses:
+                    cmd = CommandMaker.run_client(
+                        address,
+                        self.tx_size,
+                        rate_share,
+                        [x for y in workers_addresses for _, x in y]
+                    )
+                    log_file = PathMaker.client_log_file(i, id)
+                    self._background_run(cmd, log_file)
+
             # Run the primaries (except the faulty ones).
             for i, address in enumerate(committee.primary_addresses(self.faults)):
                 cmd = CommandMaker.run_primary(
@@ -233,8 +247,9 @@ class LocalBench:
             secret_size = self.n * self.kappa
             slag = secret_size / 400 + secret_size / 4000 * min(self.nodes)
             sleep(slag)
+            sleep(50)
+
             # Run the workers (except the faulty ones).
-            workers_addresses = committee.workers_addresses(self.faults)
             for i, addresses in enumerate(workers_addresses):
                 for (id, address) in addresses:
                     cmd = CommandMaker.run_worker(
@@ -248,18 +263,6 @@ class LocalBench:
                     log_file = PathMaker.worker_log_file(i, id)
                     self._background_run(cmd, log_file)
 
-            # Run the clients (they will wait for the nodes to be ready).
-            rate_share = ceil(rate / committee.workers())
-            for i, addresses in enumerate(workers_addresses):
-                for (id, address) in addresses:
-                    cmd = CommandMaker.run_client(
-                        address,
-                        self.tx_size,
-                        rate_share,
-                        [x for y in workers_addresses for _, x in y]
-                    )
-                    log_file = PathMaker.client_log_file(i, id)
-                    self._background_run(cmd, log_file)
 
 
             # Wait for all transactions to be processed.

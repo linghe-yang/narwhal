@@ -6,9 +6,12 @@ use futures::stream::SplitSink;
 use futures::stream::StreamExt as _;
 use log::{debug, info, warn};
 use std::error::Error;
+use std::io::Read;
 use std::net::SocketAddr;
+use flate2::read::ZlibDecoder;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use model::types_and_const::MAX_FRAME_SIZE;
 
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
@@ -65,14 +68,65 @@ impl<Handler: MessageHandler> Receiver<Handler> {
 
     /// Spawn a new runner to handle a specific TCP connection. It receives messages and process them
     /// using the provided handler.
+    // async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler: Handler) {
+    //     tokio::spawn(async move {
+    //         let codec = LengthDelimitedCodec::builder()
+    //             .max_frame_length(MAX_FRAME_SIZE)
+    //             .new_codec();
+    //         let transport = Framed::new(socket, codec);
+    //         let (mut writer, mut reader) = transport.split();
+    //         while let Some(frame) = reader.next().await {
+    //             match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
+    //                 Ok(message) => {
+    //                     if let Err(e) = handler.dispatch(&mut writer, message.freeze()).await {
+    //                         warn!("{}", e);
+    //                         return;
+    //                     }
+    //                 }
+    //                 Err(e) => {
+    //                     warn!("{}", e);
+    //                     return;
+    //                 }
+    //             }
+    //         }
+    //         warn!("Connection closed by peer {}", peer);
+    //     });
+    // }
     async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler: Handler) {
         tokio::spawn(async move {
-            let transport = Framed::new(socket, LengthDelimitedCodec::new());
+            let codec = LengthDelimitedCodec::builder()
+                .max_frame_length(MAX_FRAME_SIZE)
+                .new_codec();
+            let transport = Framed::new(socket, codec);
             let (mut writer, mut reader) = transport.split();
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {
-                        if let Err(e) = handler.dispatch(&mut writer, message.freeze()).await {
+                        let message = message.freeze();
+                        // 检查标志位
+                        if message.is_empty() {
+                            warn!("Received empty message from {}", peer);
+                            continue;
+                        }
+                        let flag = message[0];
+                        let payload = &message[1..];
+                        let processed_message = match flag {
+                            0x00 => payload.to_vec().into(),
+                            0x01 => {
+                                let mut decoder = ZlibDecoder::new(payload);
+                                let mut decompressed = Vec::new();
+                                if let Err(e) = decoder.read_to_end(&mut decompressed) {
+                                    warn!("Failed to decompress message from {}: {}", peer, e);
+                                    continue;
+                                }
+                                decompressed.into()
+                            }
+                            _ => {
+                                warn!("Invalid compression flag {} from {}", flag, peer);
+                                continue;
+                            }
+                        };
+                        if let Err(e) = handler.dispatch(&mut writer, processed_message).await {
                             warn!("{}", e);
                             return;
                         }

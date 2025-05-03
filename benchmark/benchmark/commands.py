@@ -77,6 +77,13 @@ class CommandMaker:
         return 'tmux kill-server'
 
     @staticmethod
+    def alias_binaries_remote(origin):
+        assert isinstance(origin, str)
+        node, client = join(origin, 'node'), join(origin, 'benchmark_client')
+        return f'rm node ; rm benchmark_client ; ln -s {node} . ; ln -s {client} .'
+
+
+    @staticmethod
     def alias_binaries(origin):
         assert isinstance(origin, str)
         node, client, gen_files = join(origin, 'node'), join(origin, 'benchmark_client'), join(origin, 'gen_files')

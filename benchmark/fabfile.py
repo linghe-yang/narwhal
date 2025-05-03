@@ -49,15 +49,15 @@ def local_pq(ctx, debug=False):
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
-        'duration': 10,
+        'duration': 80,
         'protocol': 'dolphin',
         'crypto': 'post_quantum',
         'avss_batch_size': 256,
-        'leader_per_epoch': 50,
-        "n": 32,
+        'leader_per_epoch': 20,
+        "n": 16,
         "log_q": 32,
-        "g": 4,
-        "kappa": 32,
+        "g": 1,
+        "kappa": 16,
         "r": 2,
         "ell": 0
     }
@@ -139,11 +139,14 @@ def remote(ctx, debug=True):
         'nodes': [4],
         'workers': 1,
         'collocate': True,
-        'rate': [20_000],
+        'rate': [50_000],
         'tx_size': 512,
         'duration': 300,
         'runs': 1,
-        'protocol': 'dolphin'
+        'protocol': 'dolphin',
+        'crypto': 'origin',
+        'avss_batch_size': 200,
+        'leader_per_epoch': 20
     }
     node_params = {
         'timeout': 5_000,  # ms

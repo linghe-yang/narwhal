@@ -77,26 +77,6 @@ impl BreezeReconstruct {
                             total_party_num: share.total_party_num,
                         })
                         .collect();
-                    
-                    
-                    
-                    // for c in message.c {
-                    //     for bm in shares.iter() {
-                    //         if let BreezeContent::Share(share) = &bm.content {
-                    //             if share.epoch == message.epoch && share.c == c
-                    //                 && message.index <= share.y_k.len()
-                    //             {
-                    //                 let index = message.index - 1;
-                    //                 let single_share = SingleShare{
-                    //                     c:share.c,
-                    //                     y: share.y_k[index]
-                    //                 };
-                    //                 my_secrets_to_broadcast.push(single_share);
-                    // 
-                    //             }
-                    //         }
-                    //     }
-                    // }
                     let reconstruct_message = BreezeMessage::new_reconstruct_message(
                         self.node_id.0,
                         ReconstructShare::new(my_secrets_to_broadcast, message.epoch, message.index),

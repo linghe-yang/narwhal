@@ -11,7 +11,7 @@ use crate::breeze_structs::{BreezeContent, BreezeMessage};
 
 pub struct BreezeConfirm {
     node_id: (PublicKey,Id),
-    committee: Arc<RwLock<Committee>>,
+    committee: Committee,
     breeze_confirm_receiver: Receiver<BreezeMessage>,
     breeze_certificate_sender: Sender<BreezeCertificate>,
     my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>,
@@ -20,7 +20,8 @@ pub struct BreezeConfirm {
 impl BreezeConfirm {
     pub fn spawn(
         node_id: (PublicKey,Id),
-        committee: Arc<RwLock<Committee>>,
+        // committee: Arc<RwLock<Committee>>,
+        committee: Committee,
         breeze_confirm_receiver: Receiver<BreezeMessage>,
         breeze_certificate_sender: Sender<BreezeCertificate>,
         my_dealer_shares: Arc<RwLock<HashMap<Epoch,Digest>>>,
@@ -62,7 +63,6 @@ impl BreezeConfirm {
                     } else {
                         continue;
                     }
-                    let committee = self.committee.read().await;
                     let my_dealer_shares = self.my_dealer_shares.read().await;
                     match my_dealer_shares.get(&epoch) {
                         Some(c) => {
@@ -73,7 +73,7 @@ impl BreezeConfirm {
                                     .or_insert(BreezeCertificate::new(*c, receiver,epoch, signature));
 
                                 // let mut keys_to_remove = Vec::new();
-                                let quorum_threshold = committee.authorities_quorum_threshold();
+                                let quorum_threshold = self.committee.authorities_quorum_threshold();
                                 match certificates.get(&epoch){
                                     Some(cert) => {
                                         if cert.get_len() >= quorum_threshold

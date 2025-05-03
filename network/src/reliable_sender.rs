@@ -1,6 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::error::NetworkError;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
 use log::{info, warn};
@@ -10,12 +10,16 @@ use rand::SeedableRng as _;
 use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use std::io::Write;
 use std::net::SocketAddr;
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use model::types_and_const::MAX_FRAME_SIZE;
 
 #[cfg(test)]
 #[path = "tests/reliable_sender_tests.rs"]
@@ -57,13 +61,48 @@ impl ReliableSender {
     }
 
     /// Reliably send a message to a specific address.
+    // pub async fn send(&mut self, address: SocketAddr, data: Bytes) -> CancelHandler {
+    //     let (sender, receiver) = oneshot::channel();
+    //     self.connections
+    //         .entry(address)
+    //         .or_insert_with(|| Self::spawn_connection(address))
+    //         .send(InnerMessage {
+    //             data,
+    //             cancel_handler: sender,
+    //         })
+    //         .await
+    //         .expect("Failed to send internal message");
+    //     receiver
+    // }
     pub async fn send(&mut self, address: SocketAddr, data: Bytes) -> CancelHandler {
         let (sender, receiver) = oneshot::channel();
+        let mut prefixed_data = BytesMut::with_capacity(data.len() + 1);
+        prefixed_data.extend_from_slice(&[0x00]);
+        prefixed_data.extend_from_slice(&data);
         self.connections
             .entry(address)
             .or_insert_with(|| Self::spawn_connection(address))
             .send(InnerMessage {
-                data,
+                data: prefixed_data.freeze(),
+                cancel_handler: sender,
+            })
+            .await
+            .expect("Failed to send internal message");
+        receiver
+    }
+    pub async fn send_compressed(&mut self, address: SocketAddr, data: Bytes) -> CancelHandler {
+        let (sender, receiver) = oneshot::channel();
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&data).expect("Failed to compress data");
+        let compressed_data = encoder.finish().expect("Failed to finish compression");
+        let mut prefixed_data = BytesMut::with_capacity(compressed_data.len() + 1);
+        prefixed_data.extend_from_slice(&[0x01]);
+        prefixed_data.extend_from_slice(&compressed_data);
+        self.connections
+            .entry(address)
+            .or_insert_with(|| Self::spawn_connection(address))
+            .send(InnerMessage {
+                data: prefixed_data.freeze(),
                 cancel_handler: sender,
             })
             .await
@@ -109,6 +148,19 @@ impl ReliableSender {
 
         for (address, data) in map {
             let handler = self.send(address, data).await;
+            handlers.push(handler);
+        }
+        handlers
+    }
+
+    pub async fn dispatch_to_addresses_compressed(
+        &mut self,
+        map: HashMap<SocketAddr, Bytes>,
+    ) -> Vec<CancelHandler> {
+        let mut handlers = Vec::new();
+
+        for (address, data) in map {
+            let handler = self.send_compressed(address, data).await;
             handlers.push(handler);
         }
         handlers
@@ -201,8 +253,10 @@ impl Connection {
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
         let mut pending_replies = VecDeque::new();
-
-        let (mut writer, mut reader) = Framed::new(stream, LengthDelimitedCodec::new()).split();
+        let codec = LengthDelimitedCodec::builder()
+            .max_frame_length(MAX_FRAME_SIZE)
+            .new_codec();
+        let (mut writer, mut reader) = Framed::new(stream, codec).split();
         let error = 'connection: loop {
             // Try to send all messages of the buffer.
             while let Some((data, handler)) = self.buffer.pop_front() {

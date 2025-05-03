@@ -19,6 +19,9 @@ pub static MAX_INDEX: OnceLock<usize> = OnceLock::new();
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
 
+pub const MAX_FRAME_SIZE: usize = 33554432;
+
+
 // pub fn get_wave_by_round(round: Round) -> Wave {
 //     let max_epoch = MAX_EPOCH.get().unwrap();
 //     let max_wave = MAX_WAVE.get().unwrap();

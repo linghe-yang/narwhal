@@ -1,6 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::error::NetworkError;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
 use log::{info, warn};
@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use model::types_and_const::{MAX_FRAME_SIZE};
 
 #[cfg(test)]
 #[path = "tests/simple_sender_tests.rs"]
@@ -50,16 +51,20 @@ impl SimpleSender {
     /// Try (best-effort) to send a message to a specific address.
     /// This is useful to answer sync requests.
     pub async fn send(&mut self, address: SocketAddr, data: Bytes) {
+        let mut prefixed_data = BytesMut::with_capacity(data.len() + 1);
+        prefixed_data.extend_from_slice(&[0x00]);
+        prefixed_data.extend_from_slice(&data);
+        let prefixed_data = prefixed_data.freeze();
         // Try to re-use an existing connection if possible.
         if let Some(tx) = self.connections.get(&address) {
-            if tx.send(data.clone()).await.is_ok() {
+            if tx.send(prefixed_data.clone()).await.is_ok() {
                 return;
             }
         }
 
         // Otherwise make a new connection.
         let tx = Self::spawn_connection(address);
-        if tx.send(data).await.is_ok() {
+        if tx.send(prefixed_data).await.is_ok() {
             self.connections.insert(address, tx);
         }
     }
@@ -102,9 +107,12 @@ impl Connection {
 
     /// Main loop trying to connect to the peer and transmit messages.
     async fn run(&mut self) {
+        let codec = LengthDelimitedCodec::builder()
+            .max_frame_length(MAX_FRAME_SIZE)
+            .new_codec();
         // Try to connect to the peer.
         let (mut writer, mut reader) = match TcpStream::connect(self.address).await {
-            Ok(stream) => Framed::new(stream, LengthDelimitedCodec::new()).split(),
+            Ok(stream) => Framed::new(stream, codec).split(),
             Err(e) => {
                 warn!(
                     "{}",

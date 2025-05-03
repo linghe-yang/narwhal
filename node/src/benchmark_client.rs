@@ -128,7 +128,12 @@ impl Client {
                 };
 
                 tx.resize(self.size, 0u8);
-                let bytes = tx.split().freeze();
+                let tx_bytes = tx.split().freeze();
+                let mut prefixed_data = BytesMut::with_capacity(tx_bytes.len() + 1);
+                prefixed_data.extend_from_slice(&[0x00]);
+                prefixed_data.extend_from_slice(&tx_bytes);
+                let bytes = prefixed_data.freeze();
+                
                 if let Err(e) = transport.send(bytes).await {
                     warn!("Failed to send transaction: {}", e);
                     break 'main;

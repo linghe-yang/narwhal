@@ -4,8 +4,8 @@
 
 This repo provides an experimental implementation of the asynchronous fallback protocol of [Bullshark](https://arxiv.org/pdf/2201.05677.pdf). The code is however incomplete and there are currently no plans to maintain it.
 
-A randomness beacon has been implemented to generate global coins for Bullshark and Tusk, as well as for beacon output. The cryptographic framework employs both elliptic curve cryptography and ed25519-dalek signature as pre-quantum security measures, alongside lattice-based polynomial commitments and Dilithium signatures as post-quantum security mechanisms.
-
+The randomness beacon has been implemented to generate glocal coin for bullshark and tusk, also for beacon output. 
+The crypto uses both elliptic cryptography and signature as pre-quantum way; Both lattice-based polynomial committment and dilithium signature as a post-quantum way.
 
 
 ## License

@@ -1,4 +1,5 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
+import os
 from collections import OrderedDict
 from fabric import Connection, ThreadingGroup as Group
 from fabric.exceptions import GroupException
@@ -136,27 +137,85 @@ class Bench:
         output = c.run(cmd, hide=True)
         self._check_stderr(output)
 
-    def _update(self, hosts, collocate, protocol):
+    # def _update(self, hosts, collocate, protocol):
+    #     if collocate:
+    #         ips = list(set(hosts))
+    #     else:
+    #         ips = list(set([x for y in hosts for x in y]))
+    #
+    #     Print.info(
+    #         f'Updating {len(ips)} machines (branch "{self.settings.branch}")...'
+    #     )
+    #     cmd = [
+    #         f'(cd {self.settings.repo_name} && git fetch -f)',
+    #         f'(cd {self.settings.repo_name} && git checkout -f {self.settings.branch})',
+    #         f'(cd {self.settings.repo_name} && git pull -f)',
+    #         'source $HOME/.cargo/env',
+    #         f'(cd {self.settings.repo_name}/node && {CommandMaker.compile(protocol)})',
+    #         CommandMaker.alias_binaries(
+    #             f'./{self.settings.repo_name}/target/release/'
+    #         )
+    #     ]
+    #     g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
+    #     g.run(' && '.join(cmd), hide=True)
+
+    def _update(self, hosts, collocate, protocol, crypto):
         if collocate:
             ips = list(set(hosts))
         else:
             ips = list(set([x for y in hosts for x in y]))
 
         Print.info(
-            f'Updating {len(ips)} machines (branch "{self.settings.branch}")...'
+            f'Updating {len(ips)} machines with local binaries...'
         )
-        cmd = [
-            f'(cd {self.settings.repo_name} && git fetch -f)',
-            f'(cd {self.settings.repo_name} && git checkout -f {self.settings.branch})',
-            f'(cd {self.settings.repo_name} && git pull -f)',
-            'source $HOME/.cargo/env',
-            f'(cd {self.settings.repo_name}/node && {CommandMaker.compile(protocol)})',
-            CommandMaker.alias_binaries(
-                f'./{self.settings.repo_name}/target/release/'
+
+        # Step 1: Compile locally in ~/narwhal/node
+        local_repo_path = os.path.expanduser(f'~/{self.settings.repo_name}')
+        node_path = os.path.join(local_repo_path, 'node')
+        try:
+            # Compile locally
+            Print.info('Compiling locally in ~/narwhal/node...')
+            compile_cmd = CommandMaker.compile(protocol, crypto).split()
+            subprocess.run(
+                compile_cmd,
+                cwd=node_path,
+                check=True,
+                capture_output=True,
+                text=True
             )
-        ]
-        g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
-        g.run(' && '.join(cmd), hide=True)
+        except subprocess.CalledProcessError as e:
+            raise BenchError(f'Failed to compile locally: {e.stderr}', e)
+        except Exception as e:
+            raise BenchError('Unexpected error during local compilation', e)
+
+        # Step 2: Upload binaries to remote instances
+        binary_dir = os.path.join(local_repo_path, 'target', 'release')  # Corrected path
+        remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+        binaries = ['node', 'benchmark_client']  # Match generated binaries
+
+        Print.info(f'Uploading binaries to {len(ips)} instances...')
+        for ip in ips:
+            c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+            try:
+                # Ensure remote directory exists
+                c.run(f'mkdir -p {remote_binary_dir}', hide=True)
+                # Upload each binary
+                for binary in binaries:
+                    local_path = os.path.join(binary_dir, binary)
+                    remote_path = f'{remote_binary_dir}{binary}'
+                    if os.path.exists(local_path):
+                        c.put(local_path, remote_path)
+                        # Set executable permissions
+                        c.run(f'chmod +x {remote_path}', hide=True)
+                # Create binary aliases
+                c.run(
+                    CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
+                    hide=True
+                )
+            except Exception as e:
+                raise BenchError(f'Failed to upload binaries to {ip}', e)
+
+        Print.info(f'Successfully updated {len(ips)} machines with local binaries')
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
@@ -166,12 +225,24 @@ class Bench:
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
 
         # Recompile the latest code.
-        cmd = CommandMaker.compile()
-        subprocess.run(
-            [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
-        )
+        # cmd = CommandMaker.compile()
+        # subprocess.run(
+        #     [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
+        # )
 
-        # Create alias for the client and nodes binary.
+        # Recompile the gen_files crate
+        if bench_parameters.crypto == 'pq':
+            cmd = CommandMaker.compile_gen_files_pq()
+            subprocess.run(
+                [cmd], shell=True, check=True
+            )
+        else:
+            cmd = CommandMaker.compile_gen_files()
+            subprocess.run(
+                [cmd], shell=True, check=True
+            )
+
+        # Create alias for the client and nodes binary and gen_files.
         cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
         subprocess.run([cmd], shell=True)
 
@@ -197,10 +268,20 @@ class Bench:
         committee = Committee(addresses, self.settings.base_port)
         committee.print(PathMaker.committee_file())
 
+        # generate crs file
+        if bench_parameters.crypto == 'pq':
+            cmd = CommandMaker.generate_crs_q(bench_parameters.n, bench_parameters.log_q, bench_parameters.g,
+                                              bench_parameters.kappa, bench_parameters.r, bench_parameters.ell).split()
+            subprocess.run(cmd, check=True)
+        else:
+            fault_tolerance = (min(bench_parameters.nodes) - 1) // 3
+            cmd = CommandMaker.generate_crs(fault_tolerance).split()
+            subprocess.run(cmd, check=True)
+
         node_parameters.print(PathMaker.parameters_file())
 
         # Cleanup all nodes and upload configuration files.
-        names = names[:len(names)-bench_parameters.faults]
+        names = names[:len(names) - bench_parameters.faults]
         progress = progress_bar(names, prefix='Uploading config files:')
         for i, name in enumerate(progress):
             for ip in committee.ips(name):
@@ -209,6 +290,7 @@ class Bench:
                 c.put(PathMaker.committee_file(), '.')
                 c.put(PathMaker.key_file(i), '.')
                 c.put(PathMaker.parameters_file(), '.')
+                c.put(PathMaker.crs_file(), '.')
 
         return committee
 
@@ -245,11 +327,19 @@ class Bench:
                 PathMaker.key_file(i),
                 PathMaker.committee_file(),
                 PathMaker.db_path(i),
+                PathMaker.crs_file(),
                 PathMaker.parameters_file(),
+                bench_parameters.avss_batch_size,
+                bench_parameters.leader_per_epoch,
                 debug=debug
             )
             log_file = PathMaker.primary_log_file(i)
             self._background_run(host, cmd, log_file)
+
+        if bench_parameters.crypto == 'pq':
+            secret_size = bench_parameters.n * bench_parameters.kappa
+            slag = secret_size / 400 + secret_size / 4000 * committee.size()
+            sleep(slag)
 
         # Run the workers (except the faulty ones).
         Print.info('Booting workers...')
@@ -331,7 +421,8 @@ class Bench:
             self._update(
                 selected_hosts,
                 bench_parameters.collocate,
-                bench_parameters.protocol
+                bench_parameters.protocol,
+                bench_parameters.crypto
             )
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
@@ -356,7 +447,7 @@ class Bench:
 
                 # Run the benchmark.
                 for i in range(bench_parameters.runs):
-                    Print.heading(f'Run {i+1}/{bench_parameters.runs}')
+                    Print.heading(f'Run {i + 1}/{bench_parameters.runs}')
                     try:
                         self._run_single(
                             r, committee_copy, bench_parameters, debug

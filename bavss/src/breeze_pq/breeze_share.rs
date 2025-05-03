@@ -14,7 +14,7 @@ use crate::breeze_structs::{BreezeMessage, PQCrs};
 
 pub struct BreezeShare{
     node_id: (PublicKey,Id),
-    committee: Arc<RwLock<Committee>>,
+    committee: Committee,
     breeze_share_cmd_receiver: Receiver<Epoch>,
     network: ReliableSender,
     common_reference_string: Arc<PQCrs>,
@@ -26,7 +26,8 @@ pub struct BreezeShare{
 impl BreezeShare {
     pub fn spawn(
         node_id: (PublicKey,Id),
-        committee: Arc<RwLock<Committee>>,
+        // committee: Arc<RwLock<Committee>>,
+        committee: Committee,
         breeze_share_cmd_receiver: Receiver<Epoch>,
         network: ReliableSender,
         common_reference_string: Arc<PQCrs>,
@@ -53,14 +54,14 @@ impl BreezeShare {
         loop {
             match self.breeze_share_cmd_receiver.recv().await.unwrap() {
                 epoch => {
-                    let committee = self.committee.read().await;
-                    let ids = committee.get_all_ids();
-                    let fault_tolerance = committee.authorities_fault_tolerance();
+                    // let committee = self.committee.read().await;
+                    let ids = self.committee.get_all_ids();
+                    let fault_tolerance = self.committee.authorities_fault_tolerance();
                     let batch_size = *MAX_EPOCH.get().unwrap() + *BEACON_PER_EPOCH.get().unwrap();
                     let (shares, merkle_roots) = Shares::new(batch_size as usize, epoch, ids, fault_tolerance, &self.common_reference_string);
                     let c = shares.get_c_ref().clone();
                     let mut share_map_to_addresses: HashMap<SocketAddr, Bytes> = HashMap::new();
-                    let addresses = self.committee.read().await.all_breeze_addresses();
+                    let addresses = self.committee.all_breeze_addresses();
 
                     // 遍历 share_map.value 中的每个 (id, shares) 对
                     for (share, pk) in shares.get_shares_ref() {
@@ -80,7 +81,7 @@ impl BreezeShare {
                     }
                     let mut my_dealer_shares = self.my_dealer_shares.write().await;
                     my_dealer_shares.insert(epoch, c);
-                    let handlers = self.network.dispatch_to_addresses(share_map_to_addresses).await;
+                    let handlers = self.network.dispatch_to_addresses_compressed(share_map_to_addresses).await;
                     self.cancel_handlers
                         .entry(epoch)
                         .or_insert_with(Vec::new)
