@@ -5,6 +5,7 @@
     },
     "port": 5000,
     "repo": {
+        "owner": "linghe-yang",
         "name": "narwhal",
         "url": "https://github.com/linghe-yang/narwhal.git",
         "branch": "bullshark-drb"

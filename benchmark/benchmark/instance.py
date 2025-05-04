@@ -153,7 +153,7 @@ class InstanceManager:
                         'DeviceName': '/dev/sda1',
                         'Ebs': {
                             'VolumeType': 'gp2',
-                            'VolumeSize': 200,
+                            'VolumeSize': 30,
                             'DeleteOnTermination': True
                         }
                     }],

@@ -80,11 +80,13 @@ class CommandMaker:
     def alias_binaries_remote(origin):
         assert isinstance(origin, str)
         node, client = join(origin, 'node'), join(origin, 'benchmark_client')
-        return f'rm node ; rm benchmark_client ; ln -s {node} . ; ln -s {client} .'
+        return f'rm node 2>/dev/null ; rm benchmark_client 2>/dev/null ; ln -s {node} . ; ln -s {client} .'
+
+
 
 
     @staticmethod
     def alias_binaries(origin):
         assert isinstance(origin, str)
         node, client, gen_files = join(origin, 'node'), join(origin, 'benchmark_client'), join(origin, 'gen_files')
-        return f'rm node ; rm benchmark_client; rm gen_files ; ln -s {node} . ; ln -s {client} .; ln -s {gen_files} .'
+        return f'rm node 2>/dev/null ; rm benchmark_client 2>/dev/null; rm gen_files 2>/dev/null ; ln -s {node} . ; ln -s {client} .; ln -s {gen_files} .'

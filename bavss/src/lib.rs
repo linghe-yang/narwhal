@@ -26,7 +26,7 @@ mod test {
     use crate::breeze_pq::breeze_share_dealer::Shares;
     use crypto::PublicKey;
     use model::types_and_const::{Id, ZqMod};
-    use num_bigint::{BigUint, RandBigInt, ToBigUint};
+    use num_bigint::{BigUint, RandBigInt};
     use num_prime::nt_funcs::is_prime;
     use num_traits::{One, ToPrimitive, Zero};
     use rand::Rng;
@@ -35,9 +35,11 @@ mod test {
 
     #[test]
     fn test_share() {
-        let n = 8;
+        let n = 16;
         let r = 7;
-        let kappa = 8;
+        let kappa = 16;
+        let g = 4;
+        let beacon_per_epoch = n * kappa / g;
         
         let batch_size = (n* kappa) / 4;
         let q: ZqMod;
@@ -50,8 +52,25 @@ mod test {
         let m = r * n * log_q;
         let crs = generate_crs_test(n, kappa, m, q, log_q, r);
         let ids = generate_ids(4);
-        println!("预生成完成");
         let shares = Shares::new(batch_size, 1, ids, 1, &crs);
+        let mut size_mb = 0.0;
+        for share in shares.0.0.iter() {
+            let proof = &share.0.eval_proof;
+            size_mb = calculate_proof_size_kb(&proof);
+        }
+        println!("Total size of proof: {:.3} KB", size_mb);
+        println!("proof size per beacon: {:.3} KB", size_mb / beacon_per_epoch as f64);
+    }
+
+    fn calculate_proof_size_kb(proof: &[(Vec<ZqMod>, Vec<ZqMod>)]) -> f64 {
+        let proof_vec_metadata = size_of::<Vec<(Vec<ZqMod>, Vec<ZqMod>)>>();
+        let total_heap_size: usize = proof.iter().fold(0, |acc, (vec1, vec2)| {
+            let vec_metadata_size = 2 * size_of::<Vec<ZqMod>>();
+            let data_size = (vec1.len() + vec2.len()) * size_of::<ZqMod>();
+            acc + vec_metadata_size + data_size
+        });
+        let total_size_bytes = proof_vec_metadata + total_heap_size;
+        total_size_bytes as f64 / 1_024.0
     }
     fn generate_crs_test(
         n: usize,
@@ -90,35 +109,30 @@ mod test {
     }
 
     fn generate_large_prime(n: u32) -> BigUint {
-        // 计算 2^n
-        let two = 2.to_biguint().unwrap();
-        let base = two.pow(n); // 2^n
-        let upper_bound = two.pow(n + 1); // 2^(n+1) 作为上限
-
         let mut rng = rand::thread_rng();
-        let mut candidate = base.clone();
 
-        // 随机生成一个在 2^n 到 2^(n+1) 之间的数
+        // 计算 2^(n-1) 和 2^n，作为素数的大致范围
+        let lower_bound = BigUint::one() << (n - 1); // 2^(n-1)
+        let upper_bound = (BigUint::one() << n) + (BigUint::one() << (n / 2)); // 2^n + 2^(n/2)
+
         loop {
-            // 在 base 和 upper_bound 之间随机选择
-            let range = &upper_bound - &base;
-            let offset = rng.gen_biguint_below(&range);
-            candidate = base.clone() + offset;
+            // 在 [2^(n-1), 2^n + 2^(n/2)] 范围内随机生成一个数
+            let range = &upper_bound - &lower_bound;
+            let random_offset: BigUint = rng.gen_biguint_range(&BigUint::zero(), &range);
+            let candidate = &lower_bound + random_offset;
 
-            // 确保候选数是奇数（偶数不可能是素数，除了 2）
-            if &candidate % 2u32 == Zero::zero() {
-                candidate += BigUint::one();
-            }
+            // 检查是否为偶数（最低位为 0 表示偶数）
+            let is_even = (&candidate & BigUint::one()).is_zero();
+            // 确保候选数是奇数（素数一定是奇数，除了 2）
+            let candidate = if is_even {
+                candidate + BigUint::one()
+            } else {
+                candidate
+            };
 
-            // 使用 Miller-Rabin 测试素性
+            // 检查是否为素数
             if is_prime(&candidate, None).probably() {
                 return candidate;
-            }
-
-            // 如果不是素数，继续尝试（这里简单递增，也可以随机重新生成）
-            candidate += BigUint::from(2u32); // 每次加 2，保持奇数
-            if candidate >= upper_bound {
-                candidate = base.clone(); // 如果超出范围，重置到 base
             }
         }
     }

@@ -10,6 +10,7 @@ from time import sleep
 from math import ceil
 from copy import deepcopy
 import subprocess
+import json
 
 from benchmark.config import Committee, Key, NodeParameters, BenchParameters, ConfigError
 from benchmark.utils import BenchError, Print, PathMaker, progress_bar
@@ -39,6 +40,8 @@ class Bench:
             ctx.connect_kwargs.pkey = RSAKey.from_private_key_file(
                 self.manager.settings.key_path
             )
+            ctx.connect_kwargs.timeout = 60
+            ctx.connect_kwargs.connect_retries = 3
             self.connect = ctx.connect_kwargs
         except (IOError, PasswordRequiredException, SSHException) as e:
             raise BenchError('Failed to load SSH key', e)
@@ -159,59 +162,230 @@ class Bench:
     #     g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
     #     g.run(' && '.join(cmd), hide=True)
 
-    def _update(self, hosts, collocate, protocol, crypto):
+    # def _update(self, hosts, collocate, protocol, crypto):
+    #     if collocate:
+    #         ips = list(set(hosts))
+    #     else:
+    #         ips = list(set([x for y in hosts for x in y]))
+    #
+    #     Print.info(
+    #         f'Updating {len(ips)} machines with local binaries...'
+    #     )
+    #
+    #     # Step 1: Compile locally in ~/narwhal/node
+    #     local_repo_path = os.path.expanduser(f'~/{self.settings.repo_name}')
+    #     node_path = os.path.join(local_repo_path, 'node')
+    #
+    #     try:
+    #         # Compile locally
+    #         Print.info('Compiling locally in ~/narwhal/node...')
+    #         compile_cmd = CommandMaker.compile(protocol, crypto)
+    #         subprocess.run(
+    #             [compile_cmd], shell=True, check=True, cwd=node_path
+    #         )
+    #     except subprocess.CalledProcessError as e:
+    #         raise BenchError(f'Failed to compile locally: {e.stderr}', e)
+    #     except Exception as e:
+    #         raise BenchError('Unexpected error during local compilation', e)
+    #
+    #     # Step 2: Upload binaries to remote instances
+    #     binary_dir = os.path.join(local_repo_path, 'target', 'release')  # Corrected path
+    #     remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+    #     binaries = ['node', 'benchmark_client']  # Match generated binaries
+    #
+    #     Print.info(f'Uploading binaries to {len(ips)} instances...')
+    #     for ip in ips:
+    #         c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+    #         try:
+    #             # Ensure remote directory exists
+    #             c.run(f'mkdir -p {remote_binary_dir}', hide=True)
+    #             # Upload each binary
+    #             for binary in binaries:
+    #                 local_path = os.path.join(binary_dir, binary)
+    #                 remote_path = f'{remote_binary_dir}{binary}'
+    #                 if os.path.exists(local_path):
+    #                     c.put(local_path, remote_path)
+    #                     # Set executable permissions
+    #                     c.run(f'chmod +x {remote_path}', hide=True)
+    #             # Create binary aliases
+    #             c.run(
+    #                 CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
+    #                 hide=True
+    #             )
+    #         except Exception as e:
+    #             raise BenchError(f'Failed to upload binaries to {ip}', e)
+    #
+    #     Print.info(f'Successfully updated {len(ips)} machines with local binaries')
+
+    def _update(self, hosts, collocate):
         if collocate:
             ips = list(set(hosts))
         else:
             ips = list(set([x for y in hosts for x in y]))
 
         Print.info(
-            f'Updating {len(ips)} machines with local binaries...'
+            f'Downloading binaries for {len(ips)} machines (branch "{self.settings.branch}")...'
         )
 
-        # Step 1: Compile locally in ~/narwhal/node
-        local_repo_path = os.path.expanduser(f'~/{self.settings.repo_name}')
-        node_path = os.path.join(local_repo_path, 'node')
-        try:
-            # Compile locally
-            Print.info('Compiling locally in ~/narwhal/node...')
-            compile_cmd = CommandMaker.compile(protocol, crypto)
-            subprocess.run(
-                [compile_cmd], shell=True, check=True, cwd=node_path
-            )
-        except subprocess.CalledProcessError as e:
-            raise BenchError(f'Failed to compile locally: {e.stderr}', e)
-        except Exception as e:
-            raise BenchError('Unexpected error during local compilation', e)
+        # GitHub Release URLs
+        binaries = ['node', 'benchmark_client']
+        base_url = f"https://github.com/{self.settings.owner}/{self.settings.name}/releases/latest/download"
 
-        # Step 2: Upload binaries to remote instances
-        binary_dir = os.path.join(local_repo_path, 'target', 'release')  # Corrected path
-        remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
-        binaries = ['node', 'benchmark_client']  # Match generated binaries
+        # Remote target directory
+        # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+        remote_binary_dir = f'/home/ubuntu/'
 
-        Print.info(f'Uploading binaries to {len(ips)} instances...')
+        # Track successful downloads
+        success_count = 0
+        total_count = len(ips)
+        failed_ips = []
+
+        # Download binaries on each instance
         for ip in ips:
             c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
             try:
                 # Ensure remote directory exists
                 c.run(f'mkdir -p {remote_binary_dir}', hide=True)
-                # Upload each binary
-                for binary in binaries:
-                    local_path = os.path.join(binary_dir, binary)
-                    remote_path = f'{remote_binary_dir}{binary}'
-                    if os.path.exists(local_path):
-                        c.put(local_path, remote_path)
-                        # Set executable permissions
-                        c.run(f'chmod +x {remote_path}', hide=True)
-                # Create binary aliases
-                c.run(
-                    CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
-                    hide=True
-                )
-            except Exception as e:
-                raise BenchError(f'Failed to upload binaries to {ip}', e)
 
-        Print.info(f'Successfully updated {len(ips)} machines with local binaries')
+                # Download each binary
+                for binary in binaries:
+                    download_url = f'{base_url}/{binary}'
+                    remote_path = f'{remote_binary_dir}{binary}'
+                    # Use curl to download (with -L for redirects, -f for fail on error)
+                    c.run(
+                        f'curl -L -f -o {remote_path} {download_url}',
+                        hide=True
+                    )
+                    # Set executable permissions
+                    c.run(f'chmod +x {remote_path}', hide=True)
+
+                # Create binary aliases
+                # c.run(
+                #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
+                #     hide=True
+                # )
+                success_count += 1
+            except Exception as e:
+                failed_ips.append(ip)
+                Print.warn(f'Failed to download binaries to {ip}: {str(e)}')
+                continue
+
+        # Print success summary
+        Print.info(f'Successfully downloaded binaries to {success_count}/{total_count} instances')
+        if failed_ips:
+            Print.warn(f'Failed instances: {", ".join(failed_ips)}')
+
+
+    def _update_private(self, hosts, collocate, protocol, crypto):
+        if collocate:
+            ips = list(set(hosts))
+        else:
+            ips = list(set([x for y in hosts for x in y]))
+
+        Print.info(
+            f'Downloading binaries from GitHub Release for {len(ips)} machines...'
+        )
+
+        # Step 1: Get latest release metadata locally
+        github_token = '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'
+        if protocol == 'dolphin' and crypto == 'pq':
+            tag = 'bullshark-pq'
+        elif protocol == 'dolphin' and crypto == 'origin':
+            tag = 'bullshark-npq'
+        elif protocol == 'tusk' and crypto == 'pq':
+            tag = 'tusk-pq'
+        else:
+            tag = 'tusk-npq'
+
+        try:
+            result = subprocess.run([
+                'curl',
+                '-H', f'Authorization: token {github_token}',
+                '-H', 'Accept: application/vnd.github.v3+json',
+                f'https://api.github.com/repos/{self.settings.repo_owner}/{self.settings.repo_name}/releases/tags/{tag}'
+            ], capture_output=True, text=True, check=True)
+            release_data = json.loads(result.stdout)
+        except subprocess.CalledProcessError as e:
+            raise BenchError(f'Failed to fetch release metadata: {e.stderr}', e)
+        except json.JSONDecodeError as e:
+            raise BenchError('Failed to parse release JSON', e)
+
+        # Extract asset URLs for node and benchmark_client
+        binaries = ['node', 'benchmark_client']
+        asset_urls = {}
+        for asset in release_data.get('assets', []):
+            if asset['name'] in binaries:
+                asset_urls[asset['name']] = asset['url']
+        missing_binaries = [b for b in binaries if b not in asset_urls]
+        if missing_binaries:
+            raise BenchError(f'Missing binaries in release: {missing_binaries}',Exception('Missing binaries'))
+
+        # Step 2: Download binaries on each instance
+        # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+        remote_binary_dir = f'/home/ubuntu/'
+        success_count = 0
+        g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
+        cmd = []
+        # Create remote directory
+        cmd.append(f'mkdir -p {remote_binary_dir}')
+        # Download each binary
+        for binary, url in asset_urls.items():
+            cmd.append(
+                f'curl -L -H "Authorization: token {github_token}" '
+                f'-H "Accept: application/octet-stream" '
+                f'{url} -o {remote_binary_dir}{binary}'
+            )
+            # Set executable permissions
+            cmd.append(f'chmod +x {remote_binary_dir}{binary}')
+        # Create binary aliases
+        # cmd.append(
+        #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/')
+        # )
+        # Join commands
+        full_cmd = ' && '.join(cmd)
+
+        # try:
+        #     results = g.run(full_cmd, hide=True)
+        #     # Count successful downloads
+        #     for ip, result in results.items():
+        #         if not result.stderr:
+        #             success_count += 1
+        #         else:
+        #             Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
+        # except GroupException as e:
+        #     Print.warn(f'Group execution failed: {e}')
+        #     # Count successful results from GroupException
+        #     for ip, result in e.result.items():
+        #         if isinstance(result, Exception):
+        #             Print.warn(f'Failed to download binaries on {ip}: {result}')
+        #         elif not result.stderr:
+        #             success_count += 1
+        #         else:
+        #             Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
+
+        try:
+            results = g.run(full_cmd, hide=True, warn=True)
+            # Count successful downloads
+            for ip, result in results.items():
+                if result.exited == 0:
+                    success_count += 1
+                    Print.info(f'Successfully downloaded binaries on {ip}')
+                else:
+                    Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
+        except GroupException as e:
+            Print.warn(f'Group execution failed: {e}')
+            for ip, result in e.result.items():
+                if isinstance(result, Exception):
+                    Print.warn(f'Failed to download binaries on {ip}: {result}')
+                elif result.exited == 0:
+                    success_count += 1
+                    Print.info(f'Successfully downloaded binaries on {ip}')
+                else:
+                    Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
+
+        # Step 3: Report success count
+        Print.info(f'Successfully downloaded binaries on {success_count}/{len(ips)} instances')
+
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
@@ -397,7 +571,7 @@ class Bench:
         Print.info('Parsing logs and computing performance...')
         return LogParser.process(PathMaker.logs_path(), faults=faults)
 
-    def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
+    def run(self, bench_parameters_dict, node_parameters_dict, debug=False, update=True):
         assert isinstance(debug, bool)
         Print.heading('Starting remote benchmark')
         try:
@@ -413,16 +587,17 @@ class Bench:
             return
 
         # Update nodes.
-        try:
-            self._update(
-                selected_hosts,
-                bench_parameters.collocate,
-                bench_parameters.protocol,
-                bench_parameters.crypto
-            )
-        except (GroupException, ExecutionError) as e:
-            e = FabricError(e) if isinstance(e, GroupException) else e
-            raise BenchError('Failed to update nodes', e)
+        if update:
+            try:
+                self._update_private(
+                    selected_hosts,
+                    bench_parameters.collocate,
+                    bench_parameters.protocol,
+                    bench_parameters.crypto
+                )
+            except (GroupException, ExecutionError) as e:
+                e = FabricError(e) if isinstance(e, GroupException) else e
+                raise BenchError('Failed to update nodes', e)
 
         # Upload all configuration files.
         try:

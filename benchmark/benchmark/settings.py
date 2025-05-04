@@ -7,10 +7,10 @@ class SettingsError(Exception):
 
 
 class Settings:
-    def __init__(self, key_name, key_path, base_port, repo_name, repo_url,
+    def __init__(self, key_name, key_path, base_port, repo_owner, repo_name, repo_url,
                  branch, instance_type, aws_regions):
         inputs_str = [
-            key_name, key_path, repo_name, repo_url, branch, instance_type
+            key_name, key_path, repo_owner, repo_name, repo_url, branch, instance_type
         ]
         if isinstance(aws_regions, list):
             regions = aws_regions
@@ -27,7 +27,7 @@ class Settings:
         self.key_path = key_path
 
         self.base_port = base_port
-
+        self.repo_owner = repo_owner
         self.repo_name = repo_name
         self.repo_url = repo_url
         self.branch = branch
@@ -45,6 +45,7 @@ class Settings:
                 data['key']['name'],
                 data['key']['path'],
                 data['port'],
+                data['repo']['owner'],
                 data['repo']['name'],
                 data['repo']['url'],
                 data['repo']['branch'],
