@@ -85,6 +85,14 @@ def create(ctx, nodes=10):
     except BenchError as e:
         Print.error(e)
 
+@task
+def create_main(ctx0):
+    ''' Create a testbed'''
+    try:
+        InstanceManager.make().create_instances(1)
+    except BenchError as e:
+        Print.error(e)
+
 
 @task
 def destroy(ctx):
@@ -96,7 +104,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=4):
+def start(ctx, max=10):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -179,12 +187,12 @@ def remote_pq(ctx, debug=False, update=True):
         'runs': 1,
         'protocol': 'dolphin',
         'crypto': 'post_quantum',
-        'avss_batch_size': 256,
-        'leader_per_epoch': 30,
-        "n": 16,
+        'avss_batch_size': 1024,
+        'leader_per_epoch': 200,
+        "n": 32,
         "log_q": 32,
         "g": 1,
-        "kappa": 16,
+        "kappa": 32,
         "r": 4,
         "ell": 0
     }

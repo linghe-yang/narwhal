@@ -40,8 +40,8 @@ class Bench:
             ctx.connect_kwargs.pkey = RSAKey.from_private_key_file(
                 self.manager.settings.key_path
             )
-            ctx.connect_kwargs.timeout = 60
-            ctx.connect_kwargs.connect_retries = 3
+            # ctx.connect_kwargs.timeout = 60
+            # ctx.connect_kwargs.connect_retries = 3
             self.connect = ctx.connect_kwargs
         except (IOError, PasswordRequiredException, SSHException) as e:
             raise BenchError('Failed to load SSH key', e)
@@ -63,21 +63,21 @@ class Bench:
             'sudo apt-get -y autoremove',
 
             # The following dependencies prevent the error: [error: linker `cc` not found].
-            # 'sudo apt-get -y install build-essential',
-            # 'sudo apt-get -y install cmake',
+            'sudo apt-get -y install build-essential',
+            'sudo apt-get -y install cmake',
 
             # Install rust (non-interactive).
-            # 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
-            # 'source $HOME/.cargo/env',
-            # 'rustup default stable',
+            'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
+            'source $HOME/.cargo/env',
+            'rustup default stable',
 
             # This is missing from the Rocksdb installer (needed for Rocksdb).
             'sudo apt-get install -y clang',
 
             # Clone the repo.
-            # f'(git clone {self.settings.repo_url} || (cd {self.settings.repo_name} ; git pull))'
+            f'(git clone {self.settings.repo_url} || (cd {self.settings.repo_name} ; git pull))'
         ]
-        hosts = self.manager.hosts(flat=True)
+        hosts = self.manager.main_hosts(flat=True)
         try:
             g = Group(*hosts, user='ubuntu', connect_kwargs=self.connect)
             g.run(' && '.join(cmd), hide=True)
@@ -217,65 +217,65 @@ class Bench:
     #
     #     Print.info(f'Successfully updated {len(ips)} machines with local binaries')
 
-    def _update(self, hosts, collocate):
-        if collocate:
-            ips = list(set(hosts))
-        else:
-            ips = list(set([x for y in hosts for x in y]))
-
-        Print.info(
-            f'Downloading binaries for {len(ips)} machines (branch "{self.settings.branch}")...'
-        )
-
-        # GitHub Release URLs
-        binaries = ['node', 'benchmark_client']
-        base_url = f"https://github.com/{self.settings.owner}/{self.settings.name}/releases/latest/download"
-
-        # Remote target directory
-        # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
-        remote_binary_dir = f'/home/ubuntu/'
-
-        # Track successful downloads
-        success_count = 0
-        total_count = len(ips)
-        failed_ips = []
-
-        # Download binaries on each instance
-        for ip in ips:
-            c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
-            try:
-                # Ensure remote directory exists
-                c.run(f'mkdir -p {remote_binary_dir}', hide=True)
-
-                # Download each binary
-                for binary in binaries:
-                    download_url = f'{base_url}/{binary}'
-                    remote_path = f'{remote_binary_dir}{binary}'
-                    # Use curl to download (with -L for redirects, -f for fail on error)
-                    c.run(
-                        f'curl -L -f -o {remote_path} {download_url}',
-                        hide=True
-                    )
-                    # Set executable permissions
-                    c.run(f'chmod +x {remote_path}', hide=True)
-
-                # Create binary aliases
-                # c.run(
-                #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
-                #     hide=True
-                # )
-                success_count += 1
-            except Exception as e:
-                failed_ips.append(ip)
-                Print.warn(f'Failed to download binaries to {ip}: {str(e)}')
-                continue
-
-        # Print success summary
-        Print.info(f'Successfully downloaded binaries to {success_count}/{total_count} instances')
-        if failed_ips:
-            Print.warn(f'Failed instances: {", ".join(failed_ips)}')
-
-
+    # def _update(self, hosts, collocate):
+    #     if collocate:
+    #         ips = list(set(hosts))
+    #     else:
+    #         ips = list(set([x for y in hosts for x in y]))
+    #
+    #     Print.info(
+    #         f'Downloading binaries for {len(ips)} machines (branch "{self.settings.branch}")...'
+    #     )
+    #
+    #     # GitHub Release URLs
+    #     binaries = ['node', 'benchmark_client']
+    #     base_url = f"https://github.com/{self.settings.owner}/{self.settings.name}/releases/latest/download"
+    #
+    #     # Remote target directory
+    #     # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+    #     remote_binary_dir = f'/home/ubuntu/'
+    #
+    #     # Track successful downloads
+    #     success_count = 0
+    #     total_count = len(ips)
+    #     failed_ips = []
+    #
+    #     # Download binaries on each instance
+    #     for ip in ips:
+    #         c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+    #         try:
+    #             # Ensure remote directory exists
+    #             c.run(f'mkdir -p {remote_binary_dir}', hide=True)
+    #
+    #             # Download each binary
+    #             for binary in binaries:
+    #                 download_url = f'{base_url}/{binary}'
+    #                 remote_path = f'{remote_binary_dir}{binary}'
+    #                 # Use curl to download (with -L for redirects, -f for fail on error)
+    #                 c.run(
+    #                     f'curl -L -f -o {remote_path} {download_url}',
+    #                     hide=True
+    #                 )
+    #                 # Set executable permissions
+    #                 c.run(f'chmod +x {remote_path}', hide=True)
+    #
+    #             # Create binary aliases
+    #             # c.run(
+    #             #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
+    #             #     hide=True
+    #             # )
+    #             success_count += 1
+    #         except Exception as e:
+    #             failed_ips.append(ip)
+    #             Print.warn(f'Failed to download binaries to {ip}: {str(e)}')
+    #             continue
+    #
+    #     # Print success summary
+    #     Print.info(f'Successfully downloaded binaries to {success_count}/{total_count} instances')
+    #     if failed_ips:
+    #         Print.warn(f'Failed instances: {", ".join(failed_ips)}')
+    #
+    #
     def _update_private(self, hosts, collocate, protocol, crypto):
         if collocate:
             ips = list(set(hosts))
@@ -321,7 +321,6 @@ class Bench:
             raise BenchError(f'Missing binaries in release: {missing_binaries}',Exception('Missing binaries'))
 
         # Step 2: Download binaries on each instance
-        # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
         remote_binary_dir = f'/home/ubuntu/'
         success_count = 0
         g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
@@ -337,31 +336,7 @@ class Bench:
             )
             # Set executable permissions
             cmd.append(f'chmod +x {remote_binary_dir}{binary}')
-        # Create binary aliases
-        # cmd.append(
-        #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/')
-        # )
-        # Join commands
         full_cmd = ' && '.join(cmd)
-
-        # try:
-        #     results = g.run(full_cmd, hide=True)
-        #     # Count successful downloads
-        #     for ip, result in results.items():
-        #         if not result.stderr:
-        #             success_count += 1
-        #         else:
-        #             Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
-        # except GroupException as e:
-        #     Print.warn(f'Group execution failed: {e}')
-        #     # Count successful results from GroupException
-        #     for ip, result in e.result.items():
-        #         if isinstance(result, Exception):
-        #             Print.warn(f'Failed to download binaries on {ip}: {result}')
-        #         elif not result.stderr:
-        #             success_count += 1
-        #         else:
-        #             Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
 
         try:
             results = g.run(full_cmd, hide=True, warn=True)
@@ -386,6 +361,129 @@ class Bench:
         # Step 3: Report success count
         Print.info(f'Successfully downloaded binaries on {success_count}/{len(ips)} instances')
 
+    # def _update_private(self, hosts, collocate, protocol, crypto):
+    #     if collocate:
+    #         ips = list(set(hosts))
+    #     else:
+    #         ips = list(set([x for y in hosts for x in y]))
+    #
+    #     Print.info(
+    #         f'Downloading binaries from GitHub Release for {len(ips)} machines...'
+    #     )
+    #
+    #     # Step 1: Get GitHub token from environment variable
+    #     github_token = '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'
+    #
+    #     # Step 2: Determine release tag based on protocol and crypto
+    #     if protocol == 'dolphin' and crypto == 'pq':
+    #         tag = 'bullshark-pq'
+    #     elif protocol == 'dolphin' and crypto == 'origin':
+    #         tag = 'bullshark-npq'
+    #     elif protocol == 'tusk' and crypto == 'pq':
+    #         tag = 'tusk-pq'
+    #     else:
+    #         tag = 'tusk-npq'
+    #
+    #     # Step 3: Get latest release metadata locally
+    #     try:
+    #         result = subprocess.run([
+    #             'curl',
+    #             '-H', f'Authorization: token {github_token}',
+    #             '-H', 'Accept: application/vnd.github.v3+json',
+    #             f'https://api.github.com/repos/{self.settings.repo_owner}/{self.settings.repo_name}/releases/tags/{tag}'
+    #         ], capture_output=True, text=True, check=True)
+    #         release_data = json.loads(result.stdout)
+    #     except subprocess.CalledProcessError as e:
+    #         raise BenchError(f'Failed to fetch release metadata: {e.stderr}', e)
+    #     except json.JSONDecodeError as e:
+    #         raise BenchError('Failed to parse release JSON', e)
+    #
+    #     # Step 4: Extract asset URLs for node and benchmark_client
+    #     binaries = ['node', 'benchmark_client']
+    #     asset_urls = {}
+    #     for asset in release_data.get('assets', []):
+    #         if asset['name'] in binaries:
+    #             asset_urls[asset['name']] = asset['url']
+    #     missing_binaries = [b for b in binaries if b not in asset_urls]
+    #     if missing_binaries:
+    #         raise BenchError(f'Missing binaries in release: {missing_binaries}', Exception('Missing binaries'))
+    #
+    #     # Step 5: Download binaries on each instance with retry for timeouts
+    #     remote_binary_dir = '/home/ubuntu/'
+    #     max_retries = 3
+    #     retry_delay = 5  # seconds
+    #     success_count = 0
+    #     failed_ips = set()
+    #
+    #     for binary, url in asset_urls.items():
+    #         Print.info(f'Downloading {binary} to {len(ips)} instances...')
+    #         download_cmd = (
+    #             f'curl -L -H "Authorization: token {github_token}" '
+    #             f'-H "Accept: application/octet-stream" '
+    #             f'{url} -o {remote_binary_dir}{binary} && '
+    #             f'chmod +x {remote_binary_dir}{binary}'
+    #         )
+    #
+    #         # Track successful IPs for this binary
+    #         binary_successful_ips = set()
+    #         retries = {ip: 0 for ip in ips}
+    #
+    #         while retries and max(retries.values()) < max_retries:
+    #             g = Group(*[ip for ip in retries if ip not in binary_successful_ips], user='ubuntu',
+    #                       connect_kwargs=self.connect)
+    #             if not g:
+    #                 break  # All IPs succeeded
+    #
+    #             try:
+    #                 results = g.run(download_cmd, hide=True, warn=True)
+    #                 for conn, result in results.items():
+    #                     ip = conn.host  # Extract IP string from Connection object
+    #                     if result.exited == 0:
+    #                         binary_successful_ips.add(ip)
+    #                         Print.info(f'Successfully downloaded {binary} on {ip}')
+    #                     else:
+    #                         Print.warn(f'Failed to download {binary} on {ip}: {result.stderr}')
+    #                         retries[ip] += 1
+    #             except GroupException as e:
+    #                 for conn, result in e.result.items():
+    #                     ip = conn.host  # Extract IP string from Connection object
+    #                     if isinstance(result, Exception) and 'Connection timed out' in str(result):
+    #                         if retries[ip] < max_retries:
+    #                             retries[ip] += 1
+    #                             Print.warn(
+    #                                 f'Timeout downloading {binary} on {ip}, retry {retries[ip]}/{max_retries}')
+    #                             sleep(retry_delay)
+    #                         else:
+    #                             Print.warn(f'Exhausted retries for {binary} on {ip}')
+    #                             failed_ips.add(ip)
+    #                     elif isinstance(result, Exception):
+    #                         raise BenchError(f'Non-timeout error downloading {binary} on {ip}: {result}', result)
+    #                     elif result.exited != 0:
+    #                         raise BenchError(f'Failed to download {binary} on {ip}: {result.stderr}',
+    #                                          Exception(result.stderr))
+    #
+    #         # Remove IPs that succeeded from retries
+    #         for ip in binary_successful_ips:
+    #             retries.pop(ip, None)
+    #
+    #         # Check if any IPs failed for this binary
+    #         if retries:
+    #             failed_ips.update(retries.keys())
+    #             raise BenchError(
+    #                 f'Failed to download {binary} on {list(retries.keys())} after {max_retries} retries',
+    #                 Exception('Download failed')
+    #             )
+    #
+    #         # Step 6: Update success count
+    #         success_count = len(ips) - len(failed_ips)
+    #         Print.info(f'Successfully downloaded all binaries on {success_count}/{len(ips)} instances')
+    #
+    #         # Step 7: Ensure all instances succeeded
+    #         if failed_ips:
+    #             raise BenchError(
+    #                 f'Not all instances downloaded binaries: {success_count}/{len(ips)} succeeded, failed on {failed_ips}',
+    #                 Exception('Incomplete download')
+    #             )
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
