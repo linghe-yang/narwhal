@@ -92,7 +92,7 @@ class InstanceManager:
 
     def _create_security_group(self, client):
         client.create_security_group(
-            Description='HotStuff node',
+            Description='Bullshark node',
             GroupName=self.SECURITY_GROUP_NAME,
         )
 
@@ -128,6 +128,43 @@ class InstanceManager:
             ]
         )
 
+    def _create_security_group_main(self, client):
+        client.create_security_group(
+            Description='main node',
+            GroupName='main',
+        )
+
+        client.authorize_security_group_ingress(
+            GroupName='main',
+            IpPermissions=[
+                {
+                    'IpProtocol': 'tcp',
+                    'FromPort': 22,
+                    'ToPort': 22,
+                    'IpRanges': [{
+                        'CidrIp': '0.0.0.0/0',
+                        'Description': 'Debug SSH access',
+                    }],
+                    'Ipv6Ranges': [{
+                        'CidrIpv6': '::/0',
+                        'Description': 'Debug SSH access',
+                    }],
+                },
+                {
+                    'IpProtocol': 'tcp',
+                    'FromPort': self.settings.base_port,
+                    'ToPort': self.settings.base_port + 2_000,
+                    'IpRanges': [{
+                        'CidrIp': '0.0.0.0/0',
+                        'Description': 'Dag port',
+                    }],
+                    'Ipv6Ranges': [{
+                        'CidrIpv6': '::/0',
+                        'Description': 'Dag port',
+                    }],
+                }
+            ]
+        )
     def _get_ami(self, client):
         # The AMI changes with regions.
         response = client.describe_images(
@@ -176,7 +213,7 @@ class InstanceManager:
                         'DeviceName': '/dev/sda1',
                         'Ebs': {
                             'VolumeType': 'gp2',
-                            'VolumeSize': 30,
+                            'VolumeSize': 20,
                             'DeleteOnTermination': True
                         }
                     }],
@@ -195,7 +232,7 @@ class InstanceManager:
         # Create the security group in every region.
         for client in self.clients.values():
             try:
-                self._create_security_group(client)
+                self._create_security_group_main(client)
             except ClientError as e:
                 error = AWSError(e)
                 if error.code != 'InvalidGroup.Duplicate':
@@ -214,7 +251,7 @@ class InstanceManager:
                     KeyName=self.settings.key_name,
                     MaxCount=instances,
                     MinCount=instances,
-                    SecurityGroups=[self.SECURITY_GROUP_NAME],
+                    SecurityGroups=['main'],
                     TagSpecifications=[{
                         'ResourceType': 'instance',
                         'Tags': [{

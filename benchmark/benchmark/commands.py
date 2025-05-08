@@ -13,6 +13,12 @@ class CommandMaker:
         )
 
     @staticmethod
+    def cleanup_exp_crs():
+        return (
+            f'rm -r .db-* ; find . -maxdepth 1 -type f -name ".*.json" ! -name ".crs.json" -delete ; mkdir -p {PathMaker.results_path()}'
+        )
+
+    @staticmethod
     def clean_logs():
         return f'rm -r {PathMaker.logs_path()} ; mkdir -p {PathMaker.logs_path()}'
 

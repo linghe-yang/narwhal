@@ -1,7 +1,7 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
 from json import dump, load
 from collections import OrderedDict
-
+import json
 
 class ConfigError(Exception):
     pass
@@ -86,6 +86,54 @@ class Committee:
                 'primary': primary_addr,
                 'workers': workers_addr
             }
+
+    def from_file(self, filename='.committee.json'):
+        ''' Initialize Committee from a .committee.json file '''
+        assert isinstance(filename, str)
+        with open(filename, 'r') as f:
+            data = load(f)
+
+        # Extract names and hosts
+        names = []
+        hosts = []
+        ports = []
+
+        for name, authority in data['authorities'].items():
+            names.append(name)
+            # Extract primary host
+            primary_addr = authority['primary']['primary_to_primary']
+            primary_host = primary_addr.split(':')[0]
+            # Collect all ports for finding base_port
+            ports.append(int(primary_addr.split(':')[1]))
+            ports.append(int(authority['primary']['worker_to_primary'].split(':')[1]))
+            ports.append(int(authority['primary']['breeze_addr'].split(':')[1]))
+            ports.append(int(authority['primary']['init_bft_addr'].split(':')[1]))
+
+            # Initialize hosts list with primary host
+            host_list = [primary_host]
+
+            # Extract worker hosts and ports
+            for worker in authority['workers'].values():
+                worker_addr = worker['primary_to_worker']
+                worker_host = worker_addr.split(':')[0]
+                host_list.append(worker_host)
+                ports.append(int(worker_addr.split(':')[1]))
+                ports.append(int(worker['transactions'].split(':')[1]))
+                ports.append(int(worker['worker_to_worker'].split(':')[1]))
+
+            hosts.append(host_list)
+
+        # Construct addresses OrderedDict
+        addresses = OrderedDict(
+            (x, y) for x, y in zip(names, hosts)
+        )
+
+        # Determine base_port as the smallest port
+        base_port = min(ports)
+
+        # Initialize using __init__
+        return self.__init__(addresses, base_port)
+
 
     def primary_addresses(self, faults=0):
         ''' Returns an ordered list of primaries' addresses. '''

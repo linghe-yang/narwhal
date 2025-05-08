@@ -18,6 +18,8 @@ from benchmark.commands import CommandMaker
 from benchmark.logs import LogParser, ParseError
 from benchmark.instance import InstanceManager
 
+from concurrent.futures import ThreadPoolExecutor
+
 
 class FabricError(Exception):
     ''' Wrapper for Fabric exception with a meaningfull error message. '''
@@ -40,8 +42,7 @@ class Bench:
             ctx.connect_kwargs.pkey = RSAKey.from_private_key_file(
                 self.manager.settings.key_path
             )
-            # ctx.connect_kwargs.timeout = 60
-            # ctx.connect_kwargs.connect_retries = 3
+            ctx.connect_kwargs.timeout = 10
             self.connect = ctx.connect_kwargs
         except (IOError, PasswordRequiredException, SSHException) as e:
             raise BenchError('Failed to load SSH key', e)
@@ -217,65 +218,65 @@ class Bench:
     #
     #     Print.info(f'Successfully updated {len(ips)} machines with local binaries')
 
-    # def _update(self, hosts, collocate):
-    #     if collocate:
-    #         ips = list(set(hosts))
-    #     else:
-    #         ips = list(set([x for y in hosts for x in y]))
-    #
-    #     Print.info(
-    #         f'Downloading binaries for {len(ips)} machines (branch "{self.settings.branch}")...'
-    #     )
-    #
-    #     # GitHub Release URLs
-    #     binaries = ['node', 'benchmark_client']
-    #     base_url = f"https://github.com/{self.settings.owner}/{self.settings.name}/releases/latest/download"
-    #
-    #     # Remote target directory
-    #     # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
-    #     remote_binary_dir = f'/home/ubuntu/'
-    #
-    #     # Track successful downloads
-    #     success_count = 0
-    #     total_count = len(ips)
-    #     failed_ips = []
-    #
-    #     # Download binaries on each instance
-    #     for ip in ips:
-    #         c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
-    #         try:
-    #             # Ensure remote directory exists
-    #             c.run(f'mkdir -p {remote_binary_dir}', hide=True)
-    #
-    #             # Download each binary
-    #             for binary in binaries:
-    #                 download_url = f'{base_url}/{binary}'
-    #                 remote_path = f'{remote_binary_dir}{binary}'
-    #                 # Use curl to download (with -L for redirects, -f for fail on error)
-    #                 c.run(
-    #                     f'curl -L -f -o {remote_path} {download_url}',
-    #                     hide=True
-    #                 )
-    #                 # Set executable permissions
-    #                 c.run(f'chmod +x {remote_path}', hide=True)
-    #
-    #             # Create binary aliases
-    #             # c.run(
-    #             #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
-    #             #     hide=True
-    #             # )
-    #             success_count += 1
-    #         except Exception as e:
-    #             failed_ips.append(ip)
-    #             Print.warn(f'Failed to download binaries to {ip}: {str(e)}')
-    #             continue
-    #
-    #     # Print success summary
-    #     Print.info(f'Successfully downloaded binaries to {success_count}/{total_count} instances')
-    #     if failed_ips:
-    #         Print.warn(f'Failed instances: {", ".join(failed_ips)}')
-    #
-    #
+    def _update(self, hosts, collocate):
+        if collocate:
+            ips = list(set(hosts))
+        else:
+            ips = list(set([x for y in hosts for x in y]))
+
+        Print.info(
+            f'Downloading binaries for {len(ips)} machines (branch "{self.settings.branch}")...'
+        )
+
+        # GitHub Release URLs
+        binaries = ['node', 'benchmark_client']
+        base_url = f"https://github.com/{self.settings.owner}/{self.settings.name}/releases/latest/download"
+
+        # Remote target directory
+        # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+        remote_binary_dir = f'/home/ubuntu/'
+
+        # Track successful downloads
+        success_count = 0
+        total_count = len(ips)
+        failed_ips = []
+
+        # Download binaries on each instance
+        for ip in ips:
+            c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+            try:
+                # Ensure remote directory exists
+                c.run(f'mkdir -p {remote_binary_dir}', hide=True)
+
+                # Download each binary
+                for binary in binaries:
+                    download_url = f'{base_url}/{binary}'
+                    remote_path = f'{remote_binary_dir}{binary}'
+                    # Use curl to download (with -L for redirects, -f for fail on error)
+                    c.run(
+                        f'curl -L -f -o {remote_path} {download_url}',
+                        hide=True
+                    )
+                    # Set executable permissions
+                    c.run(f'chmod +x {remote_path}', hide=True)
+
+                # Create binary aliases
+                # c.run(
+                #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
+                #     hide=True
+                # )
+                success_count += 1
+            except Exception as e:
+                failed_ips.append(ip)
+                Print.warn(f'Failed to download binaries to {ip}: {str(e)}')
+                continue
+
+        # Print success summary
+        Print.info(f'Successfully downloaded binaries to {success_count}/{total_count} instances')
+        if failed_ips:
+            Print.warn(f'Failed instances: {", ".join(failed_ips)}')
+
+
     def _update_private(self, hosts, collocate, protocol, crypto):
         if collocate:
             ips = list(set(hosts))
@@ -286,6 +287,38 @@ class Bench:
             f'Downloading binaries from GitHub Release for {len(ips)} machines...'
         )
 
+        Print.info(f'Testing SSH connectivity for {len(ips)} machines...')
+
+        # Step 0: Test SSH connectivity
+        g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
+        test_cmd = 'echo "test"'
+        failed_ips = []
+        try:
+            results = g.run(test_cmd, hide=True, warn=True, timeout=10)
+            for ip, result in results.items():
+                if result.exited != 0 or result.stderr:
+                    failed_ips.append((ip, result.stderr or f'Non-zero exit code: {result.exited}'))
+        except GroupException as e:
+            for ip, result in e.result.items():
+                if isinstance(result, Exception):
+                    failed_ips.append((ip, str(result)))
+                elif result.exited != 0 or result.stderr:
+                    failed_ips.append((ip, result.stderr or f'Non-zero exit code: {result.exited}'))
+
+        # Step 2: Check SSH test results
+        if failed_ips:
+            for ip, error in failed_ips:
+                Print.warn(f'SSH connection failed on {ip}: {error}')
+            raise BenchError(
+                f'SSH connectivity test failed for {len(failed_ips)}/{len(ips)} instances',
+                Exception('SSH connectivity issues')
+            )
+        Print.info(f'Successfully connected to all {len(ips)} instances')
+
+
+        Print.info(
+            f'Downloading binaries from GitHub Release for {len(ips)} machines...'
+        )
         # Step 1: Get latest release metadata locally
         github_token = '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'
         if protocol == 'dolphin' and crypto == 'pq':
@@ -321,7 +354,7 @@ class Bench:
             raise BenchError(f'Missing binaries in release: {missing_binaries}',Exception('Missing binaries'))
 
         # Step 2: Download binaries on each instance
-        remote_binary_dir = f'/home/ubuntu/'
+        remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
         success_count = 0
         g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
         cmd = []
@@ -336,15 +369,20 @@ class Bench:
             )
             # Set executable permissions
             cmd.append(f'chmod +x {remote_binary_dir}{binary}')
+
+        # Create binary aliases
+        cmd.append(
+            CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/')
+        )
+
         full_cmd = ' && '.join(cmd)
 
         try:
-            results = g.run(full_cmd, hide=True, warn=True)
+            results = g.run(full_cmd, hide=True, warn=True,timeout=20)
             # Count successful downloads
             for ip, result in results.items():
                 if result.exited == 0:
                     success_count += 1
-                    Print.info(f'Successfully downloaded binaries on {ip}')
                 else:
                     Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
         except GroupException as e:
@@ -354,12 +392,13 @@ class Bench:
                     Print.warn(f'Failed to download binaries on {ip}: {result}')
                 elif result.exited == 0:
                     success_count += 1
-                    Print.info(f'Successfully downloaded binaries on {ip}')
                 else:
                     Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
 
         # Step 3: Report success count
         Print.info(f'Successfully downloaded binaries on {success_count}/{len(ips)} instances')
+        if success_count != len(ips):
+            raise BenchError('Failed to connect to some instances',Exception('SSH Error'))
 
     # def _update_private(self, hosts, collocate, protocol, crypto):
     #     if collocate:
@@ -485,7 +524,90 @@ class Bench:
     #                 Exception('Incomplete download')
     #             )
 
-    def _config(self, hosts, node_parameters, bench_parameters):
+    # def _config(self, hosts, node_parameters, bench_parameters, update_crs):
+    #     Print.info('Generating configuration files...')
+    #
+    #     # Cleanup all local configuration files.
+    #     cmd = CommandMaker.cleanup()
+    #     subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
+    #
+    #     # Recompile the latest code.
+    #     cmd = CommandMaker.compile(bench_parameters.protocol,bench_parameters.crypto)
+    #     subprocess.run(
+    #         [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
+    #     )
+    #
+    #     # Recompile the gen_files crate
+    #     if bench_parameters.crypto == 'pq':
+    #         cmd = CommandMaker.compile_gen_files_pq()
+    #         subprocess.run(
+    #             [cmd], shell=True, check=True
+    #         )
+    #     else:
+    #         cmd = CommandMaker.compile_gen_files()
+    #         subprocess.run(
+    #             [cmd], shell=True, check=True
+    #         )
+    #
+    #     # Create alias for the client and nodes binary and gen_files.
+    #     cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
+    #     subprocess.run([cmd], shell=True)
+    #
+    #     # Generate configuration files.
+    #     keys = []
+    #     key_files = [PathMaker.key_file(i) for i in range(len(hosts))]
+    #     for filename in key_files:
+    #         cmd = CommandMaker.generate_key(filename).split()
+    #         subprocess.run(cmd, check=True)
+    #         keys += [Key.from_file(filename)]
+    #
+    #     names = [x.name for x in keys]
+    #
+    #     if bench_parameters.collocate:
+    #         workers = bench_parameters.workers
+    #         addresses = OrderedDict(
+    #             (x, [y] * (workers + 1)) for x, y in zip(names, hosts)
+    #         )
+    #     else:
+    #         addresses = OrderedDict(
+    #             (x, y) for x, y in zip(names, hosts)
+    #         )
+    #     committee = Committee(addresses, self.settings.base_port)
+    #     committee.print(PathMaker.committee_file())
+    #
+    #     # generate crs file
+    #     if update_crs:
+    #         if bench_parameters.crypto == 'pq':
+    #             cmd = CommandMaker.generate_crs_q(bench_parameters.n, bench_parameters.log_q, bench_parameters.g,
+    #                                               bench_parameters.kappa, bench_parameters.r, bench_parameters.ell).split()
+    #             subprocess.run(cmd, check=True)
+    #         else:
+    #             fault_tolerance = (len(hosts) - 1) // 3
+    #             cmd = CommandMaker.generate_crs(fault_tolerance).split()
+    #             subprocess.run(cmd, check=True)
+    #
+    #
+    #     node_parameters.print(PathMaker.parameters_file())
+    #
+    #     # Cleanup all nodes and upload configuration files.
+    #     names = names[:len(names) - bench_parameters.faults]
+    #     progress = progress_bar(names, prefix='Uploading config files:')
+    #     for i, name in enumerate(progress):
+    #         for ip in committee.ips(name):
+    #             c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+    #             if update_crs:
+    #                 c.run(f'{CommandMaker.cleanup()} || true', hide=True)
+    #             else:
+    #                 c.run(f'{CommandMaker.cleanup_exp_crs()} || true', hide=True)
+    #             c.put(PathMaker.committee_file(), '.')
+    #             c.put(PathMaker.key_file(i), '.')
+    #             c.put(PathMaker.parameters_file(), '.')
+    #             if update_crs:
+    #                 c.put(PathMaker.crs_file(), '.')
+    #
+    #     return committee
+
+    def _config(self, hosts, node_parameters, bench_parameters, update_crs):
         Print.info('Generating configuration files...')
 
         # Cleanup all local configuration files.
@@ -493,10 +615,10 @@ class Bench:
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
 
         # Recompile the latest code.
-        # cmd = CommandMaker.compile()
-        # subprocess.run(
-        #     [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
-        # )
+        cmd = CommandMaker.compile(bench_parameters.protocol, bench_parameters.crypto)
+        subprocess.run(
+            [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
+        )
 
         # Recompile the gen_files crate
         if bench_parameters.crypto == 'pq':
@@ -536,29 +658,48 @@ class Bench:
         committee = Committee(addresses, self.settings.base_port)
         committee.print(PathMaker.committee_file())
 
-        # generate crs file
-        if bench_parameters.crypto == 'pq':
-            cmd = CommandMaker.generate_crs_q(bench_parameters.n, bench_parameters.log_q, bench_parameters.g,
-                                              bench_parameters.kappa, bench_parameters.r, bench_parameters.ell).split()
-            subprocess.run(cmd, check=True)
-        else:
-            fault_tolerance = (min(bench_parameters.nodes) - 1) // 3
-            cmd = CommandMaker.generate_crs(fault_tolerance).split()
-            subprocess.run(cmd, check=True)
+        # Generate crs file
+        if update_crs:
+            if bench_parameters.crypto == 'pq':
+                cmd = CommandMaker.generate_crs_q(
+                    bench_parameters.n, bench_parameters.log_q, bench_parameters.g,
+                    bench_parameters.kappa, bench_parameters.r, bench_parameters.ell
+                ).split()
+                subprocess.run(cmd, check=True)
+            else:
+                fault_tolerance = (len(hosts) - 1) // 3
+                cmd = CommandMaker.generate_crs(fault_tolerance).split()
+                subprocess.run(cmd, check=True)
 
         node_parameters.print(PathMaker.parameters_file())
 
-        # Cleanup all nodes and upload configuration files.
+        # Cleanup all nodes and upload configuration files in parallel.
         names = names[:len(names) - bench_parameters.faults]
-        progress = progress_bar(names, prefix='Uploading config files:')
-        for i, name in enumerate(progress):
+
+        def upload_config(name, i):
+            """Upload configuration files to a single instance."""
             for ip in committee.ips(name):
-                c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
-                c.run(f'{CommandMaker.cleanup()} || true', hide=True)
-                c.put(PathMaker.committee_file(), '.')
-                c.put(PathMaker.key_file(i), '.')
-                c.put(PathMaker.parameters_file(), '.')
-                c.put(PathMaker.crs_file(), '.')
+                with Connection(ip, user='ubuntu', connect_kwargs=self.connect) as c:
+                    if update_crs:
+                        c.run(f'{CommandMaker.cleanup()} || true', hide=True)
+                    else:
+                        c.run(f'{CommandMaker.cleanup_exp_crs()} || true', hide=True)
+                    c.put(PathMaker.committee_file(), '.')
+                    c.put(PathMaker.key_file(i), '.')
+                    c.put(PathMaker.parameters_file(), '.')
+                    if update_crs:
+                        c.put(PathMaker.crs_file(), '.')
+
+        Print.info(f'Uploading config files to {len(names)} instances in parallel...')
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(upload_config, name, i)
+                for i, name in enumerate(names)
+            ]
+            # Use progress bar to track completion.
+            progress = progress_bar(futures, prefix='Uploading config files:')
+            for future in progress:
+                future.result()  # Wait for each task to complete and raise any exceptions.
 
         return committee
 
@@ -606,7 +747,7 @@ class Bench:
 
         if bench_parameters.crypto == 'pq':
             secret_size = bench_parameters.n * bench_parameters.kappa
-            slag = secret_size / 400 + secret_size / 4000 * committee.size()
+            slag = secret_size / 400 + secret_size / 3000 * committee.size()
             sleep(slag)
 
         # Run the workers (except the faulty ones).
@@ -631,45 +772,105 @@ class Bench:
             sleep(ceil(duration / 20))
         self.kill(hosts=hosts, delete_logs=False)
 
+    # def _logs(self, committee, faults):
+    #     # Delete local logs (if any).
+    #     cmd = CommandMaker.clean_logs()
+    #     subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
+    #
+    #     # Download log files.
+    #     primary_addresses = committee.primary_addresses(faults)
+    #     progress = progress_bar(
+    #         primary_addresses, prefix='Downloading primaries logs:')
+    #     for i, address in enumerate(progress):
+    #         host = Committee.ip(address)
+    #         c = Connection(host, user='ubuntu', connect_kwargs=self.connect)
+    #         c.get(
+    #             PathMaker.primary_log_file(i),
+    #             local=PathMaker.primary_log_file(i)
+    #         )
+    #
+    #     workers_addresses = committee.workers_addresses(faults)
+    #     progress = progress_bar(
+    #         workers_addresses, prefix='Downloading workers logs:')
+    #     for i, addresses in enumerate(progress):
+    #         for id, address in addresses:
+    #             host = Committee.ip(address)
+    #             c = Connection(host, user='ubuntu',
+    #                            connect_kwargs=self.connect)
+    #             c.get(
+    #                 PathMaker.client_log_file(i, id),
+    #                 local=PathMaker.client_log_file(i, id)
+    #             )
+    #             c.get(
+    #                 PathMaker.worker_log_file(i, id),
+    #                 local=PathMaker.worker_log_file(i, id)
+    #             )
+    #
+    #
+    #
+    #     # Parse logs and return the parser.
+    #     Print.info('Parsing logs and computing performance...')
+    #     return LogParser.process(PathMaker.logs_path(), faults=faults)
+
     def _logs(self, committee, faults):
         # Delete local logs (if any).
         cmd = CommandMaker.clean_logs()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
 
-        # Download log files.
-        workers_addresses = committee.workers_addresses(faults)
-        progress = progress_bar(
-            workers_addresses, prefix='Downloading workers logs:')
-        for i, addresses in enumerate(progress):
-            for id, address in addresses:
-                host = Committee.ip(address)
-                c = Connection(host, user='ubuntu',
-                               connect_kwargs=self.connect)
+        def download_primary_log(address, i):
+            """Download primary log for a single address."""
+            host = Committee.ip(address)
+            with Connection(host, user='ubuntu', connect_kwargs=self.connect) as c:
                 c.get(
-                    PathMaker.client_log_file(i, id),
-                    local=PathMaker.client_log_file(i, id)
-                )
-                c.get(
-                    PathMaker.worker_log_file(i, id),
-                    local=PathMaker.worker_log_file(i, id)
+                    PathMaker.primary_log_file(i),
+                    local=PathMaker.primary_log_file(i)
                 )
 
+        def download_worker_logs(addresses, i):
+            """Download client and worker logs for a single worker instance."""
+            for id, address in addresses:
+                host = Committee.ip(address)
+                with Connection(host, user='ubuntu', connect_kwargs=self.connect) as c:
+                    c.get(
+                        PathMaker.client_log_file(i, id),
+                        local=PathMaker.client_log_file(i, id)
+                    )
+                    c.get(
+                        PathMaker.worker_log_file(i, id),
+                        local=PathMaker.worker_log_file(i, id)
+                    )
+
+        # Download primary logs in parallel.
         primary_addresses = committee.primary_addresses(faults)
-        progress = progress_bar(
-            primary_addresses, prefix='Downloading primaries logs:')
-        for i, address in enumerate(progress):
-            host = Committee.ip(address)
-            c = Connection(host, user='ubuntu', connect_kwargs=self.connect)
-            c.get(
-                PathMaker.primary_log_file(i),
-                local=PathMaker.primary_log_file(i)
-            )
+        Print.info(f'Downloading {len(primary_addresses)} primary logs in parallel...')
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(download_primary_log, address, i)
+                for i, address in enumerate(primary_addresses)
+            ]
+            # Use progress bar to track completion.
+            progress = progress_bar(futures, prefix='Downloading primaries logs:')
+            for future in progress:
+                future.result()  # Wait for each task to complete and raise any exceptions.
+
+        # Download worker logs in parallel.
+        workers_addresses = committee.workers_addresses(faults)
+        Print.info(f'Downloading {len(workers_addresses)} worker logs in parallel...')
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(download_worker_logs, addresses, i)
+                for i, addresses in enumerate(workers_addresses)
+            ]
+            # Use progress bar to track completion.
+            progress = progress_bar(futures, prefix='Downloading workers logs:')
+            for future in progress:
+                future.result()  # Wait for each task to complete and raise any exceptions.
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
         return LogParser.process(PathMaker.logs_path(), faults=faults)
 
-    def run(self, bench_parameters_dict, node_parameters_dict, debug=False, update=True):
+    def run(self, bench_parameters_dict, node_parameters_dict, debug=True, update=True, update_crs=True):
         assert isinstance(debug, bool)
         Print.heading('Starting remote benchmark')
         try:
@@ -700,7 +901,7 @@ class Bench:
         # Upload all configuration files.
         try:
             committee = self._config(
-                selected_hosts, node_parameters, bench_parameters
+                selected_hosts, node_parameters, bench_parameters, update_crs
             )
         except (subprocess.SubprocessError, GroupException) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e

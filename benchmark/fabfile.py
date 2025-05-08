@@ -49,15 +49,15 @@ def local_pq(ctx, debug=False):
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
-        'duration': 20,
+        'duration': 40,
         'protocol': 'tusk',
         'crypto': 'post_quantum',
-        'avss_batch_size': 256,
-        'leader_per_epoch': 20,
-        "n": 16,
+        'avss_batch_size': 2432,
+        'leader_per_epoch': 1200,
+        "n": 128,
         "log_q": 32,
-        "g": 1,
-        "kappa": 16,
+        "g": 4,
+        "kappa": 76,
         "r": 2,
         "ell": 0
     }
@@ -78,7 +78,7 @@ def local_pq(ctx, debug=False):
         Print.error(e)
 
 @task
-def create(ctx, nodes=10):
+def create(ctx, nodes=4):
     ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
@@ -86,10 +86,10 @@ def create(ctx, nodes=10):
         Print.error(e)
 
 @task
-def create_main(ctx0):
+def create_main(ctx):
     ''' Create a testbed'''
     try:
-        InstanceManager.make().create_instances(1)
+        InstanceManager.make().create_main(1)
     except BenchError as e:
         Print.error(e)
 
@@ -140,59 +140,59 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False, update=True):
+def remote(ctx, debug=False, update=True, update_crs=True):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [10],
+        'nodes': [4],
         'workers': 1,
         'collocate': True,
-        'rate': [50_000],
+        'rate': [100_000],
         'tx_size': 512,
-        'duration': 40,
+        'duration': 30,
         'runs': 1,
-        'protocol': 'dolphin',
+        'protocol': 'tusk',
         'crypto': 'origin',
         'avss_batch_size': 200,
-        'leader_per_epoch': 30
+        'leader_per_epoch': 40
     }
     node_params = {
         'timeout': 5_000,  # ms
         'header_size': 1_000,  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 5_000,  # ms
+        'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
         'max_batch_delay': 200  # ms
     }
     try:
-        Bench(ctx).run(bench_params, node_params, debug, update)
+        Bench(ctx).run(bench_params, node_params, debug, update,update_crs)
     except BenchError as e:
         Print.error(e)
 
 
 
 @task
-def remote_pq(ctx, debug=False, update=True):
+def remote_pq(ctx, debug=False, update=True, update_crs=False):
     ''' Run post quantum benchmarks on AWS '''
     bench_params = {
         'faults': 0,
         'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [50_000],
+        'rate': [100_000],
         'tx_size': 512,
-        'duration': 40,
+        'duration': 60,
         'runs': 1,
-        'protocol': 'dolphin',
+        'protocol': 'tusk',
         'crypto': 'post_quantum',
-        'avss_batch_size': 1024,
-        'leader_per_epoch': 200,
-        "n": 32,
+        'avss_batch_size': 2432,
+        'leader_per_epoch': 1200,
+        "n": 76,
         "log_q": 32,
-        "g": 1,
-        "kappa": 32,
+        "g": 2,
+        "kappa": 64,
         "r": 4,
         "ell": 0
     }
@@ -201,13 +201,13 @@ def remote_pq(ctx, debug=False, update=True):
         'header_size': 1_000,  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 5_000,  # ms
+        'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
         'max_batch_delay': 200  # ms
     }
     try:
-        Bench(ctx).run(bench_params, node_params, debug, update)
+        Bench(ctx).run(bench_params, node_params, debug, update, update_crs)
     except BenchError as e:
         Print.error(e)
 @task

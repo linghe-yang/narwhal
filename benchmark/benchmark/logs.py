@@ -305,6 +305,8 @@ class LogParser:
         )
         for primary_name, rate in beacon_rates:
             output += f' {primary_name} Beacon Rate: {rate:,.3f} beacons/s\n'
+        output += '-----------------------------------------\n'
+        output += f' Beacon Rate: {max(rate for _, rate in beacon_rates):,.3f} beacons/s\n'
         output += f' Beacon Equivocations: {beacon_errors:,}\n'
         output += '-----------------------------------------\n'
 
