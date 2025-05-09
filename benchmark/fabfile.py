@@ -78,7 +78,7 @@ def local_pq(ctx, debug=False):
         Print.error(e)
 
 @task
-def create(ctx, nodes=4):
+def create(ctx, nodes=10):
     ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
@@ -140,21 +140,21 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False, update=True, update_crs=True):
+def remote(ctx, debug=False, update=False, update_crs=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [4],
+        'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [100_000],
+        'rate': [150_000],
         'tx_size': 512,
-        'duration': 30,
-        'runs': 1,
-        'protocol': 'tusk',
+        'duration': 180,
+        'runs': 2,
+        'protocol': 'dolphin',
         'crypto': 'origin',
-        'avss_batch_size': 200,
-        'leader_per_epoch': 40
+        'avss_batch_size': 2432,
+        'leader_per_epoch': 1200
     }
     node_params = {
         'timeout': 5_000,  # ms
@@ -181,18 +181,18 @@ def remote_pq(ctx, debug=False, update=True, update_crs=False):
         'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [100_000],
+        'rate': [150_000],
         'tx_size': 512,
-        'duration': 60,
+        'duration': 180,
         'runs': 1,
-        'protocol': 'tusk',
+        'protocol': 'dolphin',
         'crypto': 'post_quantum',
         'avss_batch_size': 2432,
         'leader_per_epoch': 1200,
-        "n": 76,
+        "n": 128,
         "log_q": 32,
-        "g": 2,
-        "kappa": 64,
+        "g": 1,
+        "kappa": 76,
         "r": 4,
         "ell": 0
     }

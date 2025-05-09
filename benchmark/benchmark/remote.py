@@ -691,7 +691,7 @@ class Bench:
                         c.put(PathMaker.crs_file(), '.')
 
         Print.info(f'Uploading config files to {len(names)} instances in parallel...')
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [
                 executor.submit(upload_config, name, i)
                 for i, name in enumerate(names)
@@ -843,7 +843,7 @@ class Bench:
         # Download primary logs in parallel.
         primary_addresses = committee.primary_addresses(faults)
         Print.info(f'Downloading {len(primary_addresses)} primary logs in parallel...')
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [
                 executor.submit(download_primary_log, address, i)
                 for i, address in enumerate(primary_addresses)
@@ -856,7 +856,7 @@ class Bench:
         # Download worker logs in parallel.
         workers_addresses = committee.workers_addresses(faults)
         Print.info(f'Downloading {len(workers_addresses)} worker logs in parallel...')
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [
                 executor.submit(download_worker_logs, addresses, i)
                 for i, addresses in enumerate(workers_addresses)

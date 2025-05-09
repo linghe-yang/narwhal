@@ -11,7 +11,7 @@
         "branch": "bullshark-drb"
     },
     "instances": {
-        "type": "t2.micro",
+        "type": "c6i.4xlarge",
         "regions": [
             "ap-northeast-1"
         ]
