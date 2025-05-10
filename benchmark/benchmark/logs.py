@@ -44,12 +44,15 @@ class LogParser:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips, beacons, start_times, end_times = zip(*results)
+        proposals, commits, self.configs, primary_ips, beacons, start_times, resources, shares, gathers = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
-        self.beacons_per_primary = beacons  # add beacon
+        self.beacons_per_primary = beacons
         self.start_times = start_times
-        self.end_times = end_times
+        self.commits_per_primary = commits  # Store individual commits for each primary
+        self.resources_per_primary = resources  # Store resource data
+        self.shares_per_primary = shares
+        self.gathers_per_primary = gathers
 
         # Parse the workers logs.
         try:
@@ -131,6 +134,12 @@ class LogParser:
             'max_batch_delay': int(
                 search(r'Max batch delay .* (\d+)', log).group(1)
             ),
+            'dag_waves_per_epoch': int(
+                search(r'Beacons for leader election per epoch:(\d+)', log).group(1)
+            ),
+            'beacons_per_epoch': int(
+                search(r'Beacons for output per epoch:(\d+)', log).group(1)
+            )
         }
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
@@ -150,11 +159,41 @@ class LogParser:
         start_match = search(start_pattern, log)
         start_time = self._to_posix(start_match.group(1)) if start_match else None
 
-        timestamp_pattern = r'\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)'
-        timestamps18 = findall(timestamp_pattern, log)
-        end_time = self._to_posix(timestamps18[-1]) if timestamps18 else None
+        # Parse beacon resources
+        resource_pattern = r'\[(.*Z) .* Common core for epoch:(\d+) decided\. Beacon resource add:(\d+)'
+        tmp = findall(resource_pattern, log)
+        resources = [
+            {
+                'timestamp': self._to_posix(t),
+                'epoch': int(e),
+                'resource': int(r)
+            }
+            for t, e, r in tmp
+        ]
 
-        return proposals, commits, configs, ip, beacons, start_time, end_time
+        # Parse share commands
+        share_pattern = r'\[(.*Z) .* Share command send for epoch:(\d+)'
+        tmp = findall(share_pattern, log)
+        shares = [
+            {
+                'timestamp': self._to_posix(t),
+                'epoch': int(e)
+            }
+            for t, e in tmp
+        ]
+
+        # Parse share commands
+        gather_pattern = r'\[(.*Z) .* Breeze Certificate received for epoch:(\d+)'
+        tmp = findall(gather_pattern, log)
+        gathers = [
+            {
+                'timestamp': self._to_posix(t),
+                'epoch': int(e)
+            }
+            for t, e in tmp
+        ]
+
+        return proposals, commits, configs, ip, beacons, start_time, resources, shares, gathers
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:
@@ -223,19 +262,91 @@ class LogParser:
     #         rates.append((f'Primary-{idx}', rate))
     #     return rates
     def _beacon_rate_per_primary(self):
-        """Calculate beacon rate for each primary using consensus start and process end time."""
+        """Calculate beacon rate for each primary using consensus start and last commit/beacon time"""
         rates = []
-        for idx, (beacons, start_time, end_time) in enumerate(
-                zip(self.beacons_per_primary, self.start_times, self.end_times)):
-            primary_name = f'Primary-{idx}'
-            if not beacons or start_time is None or end_time is None:
-                rates.append((primary_name, 0))
+        for idx, (beacons, start_time) in enumerate(zip(self.beacons_per_primary, self.start_times)):
+            if not beacons or start_time is None:
+                rates.append((f'Primary-{idx}', 0))
                 continue
-            duration = end_time - start_time if end_time > start_time else 0
+
+            # Get beacon timestamps
+            beacon_timestamps = [b['timestamp'] for b in beacons]
+            # Get commit timestamps
+            commit_timestamps = list(self.commits_per_primary[idx].values())
+            # Take the latest timestamp from commits or beacons
+            end_time = max(
+                max(beacon_timestamps) if beacon_timestamps else float('-inf'),
+                max(commit_timestamps) if commit_timestamps else float('-inf')
+            )
+            duration = end_time - start_time if end_time != float('-inf') else 0
             count = len(beacons)
             rate = count / duration if duration > 0 else 0
-            rates.append((primary_name, rate))
+            rates.append((f'Primary-{idx}', rate))
         return rates
+
+    def _beacon_resource_rate_per_primary(self):
+        """Calculate beacon resource generation rate for each primary"""
+        rates = []
+        for idx, resources in enumerate(self.resources_per_primary):
+            if not resources:
+                rates.append((f'Primary-{idx}', 0))
+                continue
+            timestamps = [r['timestamp'] for r in resources]
+            total_resources = sum(r['resource'] for r in resources)
+            duration = max(timestamps) - min(timestamps) if timestamps else 0
+            rate = total_resources / duration if duration > 0 else 0
+            rates.append((f'Primary-{idx}', rate))
+        return rates
+
+    def _beacon_latency_per_primary(self):
+        """Calculate average beacon latency for each primary in milliseconds"""
+        latencies = []
+        for idx, (shares, resources) in enumerate(zip(self.shares_per_primary, self.resources_per_primary)):
+            if not shares or not resources:
+                latencies.append((f'Primary-{idx}', 'NULL'))
+                continue
+            # Build epoch-to-timestamp mappings
+            share_times = {s['epoch']: s['timestamp'] for s in shares}
+            resource_times = {r['epoch']: r['timestamp'] for r in resources}
+            # Calculate valid latency for matching epochs
+            valid_latencies = []
+            for epoch in share_times:
+                if epoch in resource_times and resource_times[epoch] >= share_times[epoch]:
+                    latency = round(
+                        (resource_times[epoch] - share_times[epoch]) * 1000)  # Convert to integer milliseconds
+                    valid_latencies.append(latency)
+            # Compute average latency or return 'NULL'
+            if valid_latencies:
+                avg_latency = round(sum(valid_latencies) / len(valid_latencies))
+                latencies.append((f'Primary-{idx}', avg_latency))
+            else:
+                latencies.append((f'Primary-{idx}', 'NULL'))
+        return latencies
+
+    def _breeze_gather_latency_per_primary(self):
+        """Calculate average gather latency for each primary in milliseconds"""
+        latencies = []
+        for idx, (shares, gathers) in enumerate(zip(self.shares_per_primary, self.gathers_per_primary)):
+            if not shares or not gathers:
+                latencies.append((f'Primary-{idx}', 'NULL'))
+                continue
+            # Build epoch-to-timestamp mappings
+            share_times = {s['epoch']: s['timestamp'] for s in shares}
+            gather_times = {r['epoch']: r['timestamp'] for r in gathers}
+            # Calculate valid latency for matching epochs
+            valid_latencies = []
+            for epoch in share_times:
+                if epoch in gather_times and gather_times[epoch] >= share_times[epoch]:
+                    latency = round(
+                        (gather_times[epoch] - share_times[epoch]) * 1000)  # Convert to integer milliseconds
+                    valid_latencies.append(latency)
+            # Compute average latency or return 'NULL'
+            if valid_latencies:
+                avg_latency = round(sum(valid_latencies) / len(valid_latencies))
+                latencies.append((f'Primary-{idx}', avg_latency))
+            else:
+                latencies.append((f'Primary-{idx}', 'NULL'))
+        return latencies
 
     def _beacon_errors(self):
         """calculate beacon equivocations in primaries"""
@@ -261,6 +372,8 @@ class LogParser:
         sync_retry_nodes = self.configs[0]['sync_retry_nodes']
         batch_size = self.configs[0]['batch_size']
         max_batch_delay = self.configs[0]['max_batch_delay']
+        dag_waves_per_epoch = self.configs[0]['dag_waves_per_epoch']
+        beacons_per_epoch = self.configs[0]['beacons_per_epoch']
 
         consensus_latency = self._consensus_latency() * 1_000
         consensus_tps, consensus_bps, _ = self._consensus_throughput()
@@ -268,6 +381,9 @@ class LogParser:
         end_to_end_latency = self._end_to_end_latency() * 1_000
         # add beacon
         beacon_rates = self._beacon_rate_per_primary()
+        beacon_resource_rates = self._beacon_resource_rate_per_primary()
+        beacon_latencies = self._beacon_latency_per_primary()
+        gather_latencies = self._breeze_gather_latency_per_primary()
         beacon_errors = self._beacon_errors()
 
         output = (
@@ -291,24 +407,41 @@ class LogParser:
             f' Sync retry nodes: {sync_retry_nodes:,} node(s)\n'
             f' batch size: {batch_size:,} B\n'
             f' Max batch delay: {max_batch_delay:,} ms\n'
+            f' DAG leaders per epoch: {dag_waves_per_epoch:,}\n'
+            f' Max beacon requests per epoch: {beacons_per_epoch:,}\n'
             '\n'
-            ' + RESULTS:\n'
-            f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
-            f' Consensus BPS: {round(consensus_bps):,} B/s\n'
-            f' Consensus latency: {round(consensus_latency):,} ms\n'
-            '\n'
-            f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
-            f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
-            f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
-            '\n'
-            ' + BEACON RESULTS:\n'
+            # ' + RESULTS:\n'
+            # f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
+            # f' Consensus BPS: {round(consensus_bps):,} B/s\n'
+            # f' Consensus latency: {round(consensus_latency):,} ms\n'
+            # '\n'
+            # f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
+            # f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
+            # f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
+            # '\n'
         )
-        for primary_name, rate in beacon_rates:
-            output += f' {primary_name} Beacon Rate: {rate:,.3f} beacons/s\n'
-        output += '-----------------------------------------\n'
-        output += f' Beacon Rate: {max(rate for _, rate in beacon_rates):,.3f} beacons/s\n'
-        output += f' Beacon Equivocations: {beacon_errors:,}\n'
-        output += '-----------------------------------------\n'
+        if beacons_per_epoch == 0:
+            output += (
+                ' + CONSENSUS RESULTS:\n'
+                f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
+                f' Consensus BPS: {round(consensus_bps):,} B/s\n'
+                f' Consensus latency: {round(consensus_latency):,} ms\n'
+                '\n'
+                f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
+                f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
+                f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
+                '\n'
+            )
+        if beacons_per_epoch > 0:
+            output += ' + BEACON RESULTS:\n'
+            for (primary_name, beacon_rate), (_, resource_rate), (_, gather_latency), (_, latency) in zip(beacon_rates, beacon_resource_rates, gather_latencies,
+                                                                                     beacon_latencies):
+                latency_str = f'{latency:,}' if isinstance(latency, (int, float)) else latency
+                gather_latency_str = f'{gather_latency:,}' if isinstance(gather_latency, (int, float)) else gather_latency
+
+                output += f' {primary_name} Beacon Output Rate: {beacon_rate:,.3f} beacons/s, Beacon Resource Generation Rate: {resource_rate:,.3f} beacons/s, Gather Latency: {gather_latency_str} ms, Beacon Latency: {latency_str} ms\n'
+            output += f' Beacon Equivocation Errors: {beacon_errors:,}\n'
+            output += '-----------------------------------------\n'
 
         return output
 

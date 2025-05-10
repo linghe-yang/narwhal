@@ -44,7 +44,7 @@ class Committee:
 
     def __init__(self, addresses, base_port):
         ''' The `addresses` field looks as follows:
-            { 
+            {
                 "name": ["host", "host", ...],
                 ...
             }
@@ -86,54 +86,6 @@ class Committee:
                 'primary': primary_addr,
                 'workers': workers_addr
             }
-
-    def from_file(self, filename='.committee.json'):
-        ''' Initialize Committee from a .committee.json file '''
-        assert isinstance(filename, str)
-        with open(filename, 'r') as f:
-            data = load(f)
-
-        # Extract names and hosts
-        names = []
-        hosts = []
-        ports = []
-
-        for name, authority in data['authorities'].items():
-            names.append(name)
-            # Extract primary host
-            primary_addr = authority['primary']['primary_to_primary']
-            primary_host = primary_addr.split(':')[0]
-            # Collect all ports for finding base_port
-            ports.append(int(primary_addr.split(':')[1]))
-            ports.append(int(authority['primary']['worker_to_primary'].split(':')[1]))
-            ports.append(int(authority['primary']['breeze_addr'].split(':')[1]))
-            ports.append(int(authority['primary']['init_bft_addr'].split(':')[1]))
-
-            # Initialize hosts list with primary host
-            host_list = [primary_host]
-
-            # Extract worker hosts and ports
-            for worker in authority['workers'].values():
-                worker_addr = worker['primary_to_worker']
-                worker_host = worker_addr.split(':')[0]
-                host_list.append(worker_host)
-                ports.append(int(worker_addr.split(':')[1]))
-                ports.append(int(worker['transactions'].split(':')[1]))
-                ports.append(int(worker['worker_to_worker'].split(':')[1]))
-
-            hosts.append(host_list)
-
-        # Construct addresses OrderedDict
-        addresses = OrderedDict(
-            (x, y) for x, y in zip(names, hosts)
-        )
-
-        # Determine base_port as the smallest port
-        base_port = min(ports)
-
-        # Initialize using __init__
-        return self.__init__(addresses, base_port)
-
 
     def primary_addresses(self, faults=0):
         ''' Returns an ordered list of primaries' addresses. '''
@@ -200,7 +152,6 @@ class Committee:
         assert isinstance(address, str)
         return address.split(':')[0]
 
-
 class LocalCommittee(Committee):
     def __init__(self, names, port, workers):
         assert isinstance(names, list)
@@ -222,6 +173,9 @@ class NodeParameters:
             inputs += [json['sync_retry_nodes']]
             inputs += [json['batch_size']]
             inputs += [json['max_batch_delay']]
+            inputs += [json['beacon_req_delay']]
+            inputs += [json['breeze_epoch_limit']]
+            inputs += [json['eval_beacon']]
             if 'timeout' in json:
                 inputs += [json['timeout']]
 
@@ -339,49 +293,23 @@ class BenchParameters:
         if min(self.nodes) <= self.faults:
             raise ConfigError('There should be more nodes than faults')
 
-
 class PlotParameters:
-    def __init__(self, json):
-        try:
-            faults = json['faults']
-            faults = faults if isinstance(faults, list) else [faults]
-            self.faults = [int(x) for x in faults] if faults else [0]
+    def __init__(self, params):
+        assert isinstance(params, dict)
+        for key in ['faults', 'nodes', 'workers', 'collocate', 'tx_size', 'protocol', 'crypto', 'rate', 'eval_beacon']:
+            if key not in params:
+                raise ConfigError(f'Missing {key} parameter')
 
-            nodes = json['nodes']
-            nodes = nodes if isinstance(nodes, list) else [nodes]
-            if not nodes:
-                raise ConfigError('Missing number of nodes')
-            self.nodes = [int(x) for x in nodes]
+        self.faults = params['faults']
+        self.nodes = params['nodes']
+        self.workers = params['workers']
+        self.collocate = params['collocate']
+        self.tx_size = params['tx_size']
+        self.protocol = params['protocol']
+        self.crypto = params['crypto']
+        self.rate = params['rate']
+        self.eval_beacon = params['eval_beacon']
 
-            workers = json['workers']
-            workers = workers if isinstance(workers, list) else [workers]
-            if not workers:
-                raise ConfigError('Missing number of workers')
-            self.workers = [int(x) for x in workers]
-
-            if 'collocate' in json:
-                self.collocate = bool(json['collocate'])
-            else:
-                self.collocate = True
-
-            self.tx_size = int(json['tx_size'])
-
-            max_lat = json['max_latency']
-            max_lat = max_lat if isinstance(max_lat, list) else [max_lat]
-            if not max_lat:
-                raise ConfigError('Missing max latency')
-            self.max_latency = [int(x) for x in max_lat]
-
-        except KeyError as e:
-            raise ConfigError(f'Malformed bench parameters: missing key {e}')
-
-        except ValueError:
-            raise ConfigError('Invalid parameters type')
-
-        if len(self.nodes) > 1 and len(self.workers) > 1:
-            raise ConfigError(
-                'Either the "nodes" or the "workers can be a list (not both)'
-            )
 
     def scalability(self):
         return len(self.workers) > 1

@@ -19,20 +19,23 @@ def local(ctx, debug=False):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'tusk',
+        'protocol': 'dolphin',
         'crypto': 'origin',
-        'avss_batch_size': 200,
-        'leader_per_epoch': 20
+        'avss_batch_size': 256,
+        'leader_per_epoch': 40
     }
     node_params = {
-        'timeout': 1_000,  # ms
+        'timeout': 5_000,  # ms
         'header_size': 1_000,  # bytes
         'max_header_delay': 200,  # ms
-        'gc_depth': 50,  # rounds
-        'sync_retry_delay': 10_000,  # ms
+        'gc_depth': 500,  # rounds
+        'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'beacon_req_delay': 0, # ms
+        'breeze_epoch_limit': 20,
+        'eval_beacon': True
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
@@ -49,27 +52,30 @@ def local_pq(ctx, debug=False):
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
-        'duration': 40,
-        'protocol': 'tusk',
+        'duration': 20,
+        'protocol': 'dolphin',
         'crypto': 'post_quantum',
-        'avss_batch_size': 2432,
-        'leader_per_epoch': 1200,
-        "n": 128,
+        'avss_batch_size': 256,
+        'leader_per_epoch': 40,
+        "n": 16,
         "log_q": 32,
-        "g": 4,
-        "kappa": 76,
+        "g": 1,
+        "kappa": 16,
         "r": 2,
         "ell": 0
     }
     node_params = {
         'timeout': 5_000,  # ms
-        'header_size': 1_000,  # bytes
-        'max_header_delay': 200,  # ms
-        'gc_depth': 50,  # rounds
-        'sync_retry_delay': 10_000,  # ms
+        'header_size': 50,  # bytes
+        'max_header_delay': 1_000,  # ms
+        'gc_depth': 100,  # rounds
+        'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'beacon_req_delay': 0, # ms
+        'breeze_epoch_limit': 20,
+        'eval_beacon': True
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
@@ -78,21 +84,20 @@ def local_pq(ctx, debug=False):
         Print.error(e)
 
 @task
-def create(ctx, nodes=10):
-    ''' Create a testbed'''
+def create(ctx, nodes=4):
+    ''' Create a testbed in the same VPC for debug, since the bandwidth fee is extremely costly for large node number'''
     try:
         InstanceManager.make().create_instances(nodes)
     except BenchError as e:
         Print.error(e)
 
 @task
-def create_main(ctx):
-    ''' Create a testbed'''
+def info(ctx):
+    ''' Display connect information about all the available machines '''
     try:
-        InstanceManager.make().create_main(1)
+        InstanceManager.make().print_info()
     except BenchError as e:
         Print.error(e)
-
 
 @task
 def destroy(ctx):
@@ -104,7 +109,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=10):
+def start(ctx, max=20):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -120,18 +125,8 @@ def stop(ctx):
     except BenchError as e:
         Print.error(e)
 
-
 @task
-def info(ctx):
-    ''' Display connect information about all the available machines '''
-    try:
-        InstanceManager.make().print_info()
-    except BenchError as e:
-        Print.error(e)
-
-
-@task
-def install(ctx):
+def install(ctx): # unused
     ''' Install the codebase on all machines '''
     try:
         Bench(ctx).install()
@@ -140,16 +135,16 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False, update=False, update_crs=False):
+def remote(ctx, debug=False, update=True, update_crs=True):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
         'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [150_000],
+        'rate': [200_000],
         'tx_size': 512,
-        'duration': 180,
+        'duration': 240,
         'runs': 2,
         'protocol': 'dolphin',
         'crypto': 'origin',
@@ -158,13 +153,16 @@ def remote(ctx, debug=False, update=False, update_crs=False):
     }
     node_params = {
         'timeout': 5_000,  # ms
-        'header_size': 1_000,  # bytes
+        'header_size': 50,  # bytes
         'max_header_delay': 200,  # ms
-        'gc_depth': 50,  # rounds
-        'sync_retry_delay': 10_000,  # ms
+        'gc_depth': 200,  # rounds
+        'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'beacon_req_delay': 0, # ms
+        'breeze_epoch_limit': 20,
+        'eval_beacon': True
     }
     try:
         Bench(ctx).run(bench_params, node_params, debug, update,update_crs)
@@ -174,16 +172,16 @@ def remote(ctx, debug=False, update=False, update_crs=False):
 
 
 @task
-def remote_pq(ctx, debug=False, update=True, update_crs=False):
+def remote_pq(ctx, debug=False, update=True, update_crs=True):
     ''' Run post quantum benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [10],
+        'nodes': [20],
         'workers': 1,
         'collocate': True,
-        'rate': [150_000],
+        'rate': [200_000],
         'tx_size': 512,
-        'duration': 180,
+        'duration': 30,
         'runs': 1,
         'protocol': 'dolphin',
         'crypto': 'post_quantum',
@@ -198,13 +196,16 @@ def remote_pq(ctx, debug=False, update=True, update_crs=False):
     }
     node_params = {
         'timeout': 5_000,  # ms
-        'header_size': 1_000,  # bytes
-        'max_header_delay': 200,  # ms
-        'gc_depth': 50,  # rounds
-        'sync_retry_delay': 10_000,  # ms
+        'header_size': 50,  # bytes
+        'max_header_delay': 5_000,  # ms
+        'gc_depth': 200,  # rounds
+        'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'beacon_req_delay': 0, # ms
+        'breeze_epoch_limit': 20,
+        'eval_beacon': False
     }
     try:
         Bench(ctx).run(bench_params, node_params, debug, update, update_crs)
@@ -215,12 +216,16 @@ def plot(ctx):
     ''' Plot performance using the logs generated by "fab remote" '''
     plot_params = {
         'faults': [0],
-        'nodes': [4],
-        'workers': [1, 4, 7, 10],
-        'collocate': False,
+        'nodes': [10, 20, 30, 50],
+        'workers': [1],
+        'collocate': True,
         'tx_size': 512,
-        'max_latency': [3_500, 4_500]
+        'protocol': ['bullshark', 'tusk'],
+        'crypto': ['pq', 'npq'],
+        'rate': 200000,
+        'eval_beacon': True  # Set to False to skip Beacon plots
     }
+
     try:
         Ploter.plot(plot_params)
     except PlotError as e:

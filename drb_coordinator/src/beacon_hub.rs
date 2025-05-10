@@ -11,6 +11,7 @@ impl BeaconHub {
     pub fn spawn(
         beacon_recon_req_sender: Sender<(Epoch, usize)>,
         mut beacon_res_receiver: Receiver<((Epoch, usize), Result<RandomNum, DrbError>)>,
+        beacon_req_delay: u64
     ) {
         let beacon_per_epoch = *BEACON_PER_EPOCH.get().unwrap();
         tokio::spawn(async move {
@@ -30,6 +31,7 @@ impl BeaconHub {
                             current_epoch += 1;
                             current_index = 1;
                         }
+                        sleep(Duration::from_millis(beacon_req_delay)).await;
                     }
                     (_, Err(_)) => {
                         sleep(Duration::from_millis(200)).await;

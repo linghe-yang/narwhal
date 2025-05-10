@@ -69,10 +69,14 @@ class PathMaker:
         return 'results'
 
     @staticmethod
-    def result_file(faults, nodes, workers, collocate, rate, tx_size):
+    def result_file(faults, nodes, workers, collocate, rate, tx_size, protocol ,crypto, test_beacon):
+        if protocol == 'dolphin':
+            protocol = 'bullshark'
+        if crypto != 'pq':
+            crypto = 'npq'
         return join(
             PathMaker.results_path(),
-            f'bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}.txt'
+            f'bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}-{protocol}-{crypto}{"-beacon test" if test_beacon else ""}.txt'
         )
 
     @staticmethod
@@ -80,11 +84,9 @@ class PathMaker:
         return 'plots'
 
     @staticmethod
-    def agg_file(type, faults, nodes, workers, collocate, rate, tx_size, max_latency=None):
-        if max_latency is None:
-            name = f'{type}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}.txt'
-        else:
-            name = f'{type}-{max_latency}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}.txt'
+    def agg_file(type, faults, nodes, workers, collocate, rate, tx_size, protocol=None, crypto=None, test_beacon=False):
+        suffix = f'-{protocol}-{crypto}{"-beacon" if test_beacon else ""}'
+        name = f'{type}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}{suffix}.txt'
         return join(PathMaker.plots_path(), name)
 
     @staticmethod
@@ -132,6 +134,8 @@ class Print:
         print(f'Caused by: \n{"".join(causes)}\n')
 
 
+
+
 def progress_bar(iterable, prefix='', suffix='', decimals=1, length=30, fill='â–ˆ', print_end='\r'):
     total = len(iterable)
 
@@ -147,3 +151,15 @@ def progress_bar(iterable, prefix='', suffix='', decimals=1, length=30, fill='â–
         yield item
         printProgressBar(i + 1)
     print()
+
+def distribute_rate(rate, num_workers):
+    """
+    Distribute rate across num_workers as integers, ensuring the sum equals rate.
+    Returns a list of rate_shares, one for each client.
+    """
+    if num_workers <= 0:
+        return []
+    base_share = rate // num_workers
+    extra = rate % num_workers
+    shares = [base_share + 1 if i < extra else base_share for i in range(num_workers)]
+    return shares

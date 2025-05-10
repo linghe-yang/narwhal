@@ -210,7 +210,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 global_coin_res_sender,
                 beacon_res_sender,
 
-                recover_signal_sender
+                recover_signal_sender,
+                
+                parameters.eval_beacon
             ).await;
             // #[cfg(feature = "pq")]
             // sleep(Duration::from_secs(slag as u64)).await;
@@ -259,10 +261,13 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             
                 cer_to_consensus_receiver,
             );
-            BeaconHub::spawn(
-                beacon_recon_req_sender,
-                beacon_res_receiver
-            );
+            if parameters.eval_beacon{
+                BeaconHub::spawn(
+                    beacon_recon_req_sender,
+                    beacon_res_receiver,
+                    parameters.beacon_req_delay
+                );
+            }
         }
 
         // Spawn a single worker.

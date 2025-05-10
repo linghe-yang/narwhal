@@ -52,7 +52,10 @@ pub struct Proposer {
 
     breeze_cer_buffer: Arc<RwLock<Vec<BreezeCertificate>>>,
     bcb_change_receiver: watch::Receiver<()>,
-    breeze_cer_proposed: HashSet<Epoch>
+    breeze_cer_proposed: HashSet<Epoch>,
+    
+    flag: bool,
+    breeze_epoch_limit: u64
 }
 
 impl Proposer {
@@ -63,6 +66,7 @@ impl Proposer {
         signature_service: SignatureService,
         header_size: usize,
         max_header_delay: u64,
+        breeze_epoch_limit: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
         rx_workers: Receiver<(Digest, WorkerId)>,
         tx_core: Sender<Header>,
@@ -107,6 +111,9 @@ impl Proposer {
                 breeze_cer_buffer,
                 bcb_change_receiver,
                 breeze_cer_proposed: HashSet::new(),
+                
+                flag:false,
+                breeze_epoch_limit
             }
             .run()
             .await;
@@ -140,21 +147,27 @@ impl Proposer {
                             }
                         }
                         if cer != None {
+                            info!("breeze cer for epoch:{} has been received, recover dag", epoch);
                             break;
                         }
                     }
                 }
             }
-        } else {
-            let mut bcb = self.breeze_cer_buffer.write().await;
-            cer = if bcb.is_empty() {
-                None
-            } else {
-                let bc = bcb.remove(0);
-                self.breeze_cer_proposed.insert(bc.epoch);
-                Some(bc)
-            };
-            drop(bcb);
+        }
+        else {
+            if self.breeze_epoch_limit < 1{
+                let mut bcb = self.breeze_cer_buffer.write().await;
+                cer = if bcb.is_empty() {
+                    None
+                } else {
+                    let bc = bcb.remove(0);
+                    self.breeze_cer_proposed.insert(bc.epoch);
+                    Some(bc)
+                };
+                drop(bcb);
+            }else {
+                cer = get_certificate(&mut self.breeze_cer_proposed, &self.breeze_cer_buffer, epoch, self.breeze_epoch_limit).await;
+            }
         }
         // Make a new header.
         let header = Header::new(
@@ -216,7 +229,7 @@ impl Proposer {
             let metadata_ready = !self.metadata.is_empty();
             #[cfg(not(feature = "dolphin"))]
             let metadata_ready = true;
-            if (timer_expired || enough_digests) && enough_parents && metadata_ready {
+            if (timer_expired || enough_digests) && enough_parents && metadata_ready && self.flag {
 
                 // Make a new header.
                 self.make_header().await;
@@ -244,6 +257,7 @@ impl Proposer {
                 Some((digest, worker_id)) = self.rx_workers.recv() => {
                     self.payload_size += digest.size();
                     self.digests.push((digest, worker_id));
+                    self.flag = true;
                 }
                 Some(metadata) = self.rx_consensus.recv() => {
                     self.metadata.push_front(metadata);
@@ -258,4 +272,39 @@ impl Proposer {
             }
         }
     }
+}
+
+
+async fn get_certificate(
+    breeze_cer_proposed: &mut HashSet<Epoch>,
+    breeze_cer_buffer: &Arc<RwLock<Vec<BreezeCertificate>>>,
+    epoch: Epoch,
+    breeze_epoch_limit: u64
+) -> Option<BreezeCertificate> {
+    let mut bcb = breeze_cer_buffer.write().await;
+
+    if bcb.is_empty() {
+        drop(bcb);
+        return None;
+    }
+
+    // Find maximum epoch in breeze_cer_proposed
+    // let max_epoch = breeze_cer_proposed.iter().max().copied().unwrap_or(0);
+
+    // Find index of first certificate with epoch in range (max_epoch, max_epoch + 16)
+    let index_to_remove = bcb.iter()
+        .enumerate()
+        .find(|(_, cert)| cert.epoch > epoch && cert.epoch < epoch + breeze_epoch_limit)
+        .map(|(index, _)| index);
+
+    let cer = if let Some(index) = index_to_remove {
+        let bc = bcb.remove(index);
+        breeze_cer_proposed.insert(bc.epoch);
+        Some(bc)
+    } else {
+        None
+    };
+
+    drop(bcb);
+    cer
 }

@@ -58,29 +58,6 @@ class InstanceManager:
                     ips[region] += [x['PublicIpAddress']]
         return ids, ips
 
-    def _get_main(self, state):
-        # Possible states are: 'pending', 'running', 'shutting-down',
-        # 'terminated', 'stopping', and 'stopped'.
-        ids, ips = defaultdict(list), defaultdict(list)
-        for region, client in self.clients.items():
-            r = client.describe_instances(
-                Filters=[
-                    {
-                        'Name': 'tag:Name',
-                        'Values': ['Main']
-                    },
-                    {
-                        'Name': 'instance-state-name',
-                        'Values': state
-                    }
-                ]
-            )
-            instances = [y for x in r['Reservations'] for y in x['Instances']]
-            for x in instances:
-                ids[region] += [x['InstanceId']]
-                if 'PublicIpAddress' in x:
-                    ips[region] += [x['PublicIpAddress']]
-        return ids, ips
     def _wait(self, state):
         # Possible states are: 'pending', 'running', 'shutting-down',
         # 'terminated', 'stopping', and 'stopped'.
@@ -92,7 +69,7 @@ class InstanceManager:
 
     def _create_security_group(self, client):
         client.create_security_group(
-            Description='Bullshark node',
+            Description='DRB node',
             GroupName=self.SECURITY_GROUP_NAME,
         )
 
@@ -128,43 +105,6 @@ class InstanceManager:
             ]
         )
 
-    def _create_security_group_main(self, client):
-        client.create_security_group(
-            Description='main node',
-            GroupName='main',
-        )
-
-        client.authorize_security_group_ingress(
-            GroupName='main',
-            IpPermissions=[
-                {
-                    'IpProtocol': 'tcp',
-                    'FromPort': 22,
-                    'ToPort': 22,
-                    'IpRanges': [{
-                        'CidrIp': '0.0.0.0/0',
-                        'Description': 'Debug SSH access',
-                    }],
-                    'Ipv6Ranges': [{
-                        'CidrIpv6': '::/0',
-                        'Description': 'Debug SSH access',
-                    }],
-                },
-                {
-                    'IpProtocol': 'tcp',
-                    'FromPort': self.settings.base_port,
-                    'ToPort': self.settings.base_port + 2_000,
-                    'IpRanges': [{
-                        'CidrIp': '0.0.0.0/0',
-                        'Description': 'Dag port',
-                    }],
-                    'Ipv6Ranges': [{
-                        'CidrIpv6': '::/0',
-                        'Description': 'Dag port',
-                    }],
-                }
-            ]
-        )
     def _get_ami(self, client):
         # The AMI changes with regions.
         response = client.describe_images(
@@ -226,56 +166,6 @@ class InstanceManager:
         except ClientError as e:
             raise BenchError('Failed to create AWS instances', AWSError(e))
 
-    def create_main(self,instances=1):
-        assert isinstance(instances, int) and instances > 0
-
-        # Create the security group in every region.
-        for client in self.clients.values():
-            try:
-                self._create_security_group_main(client)
-            except ClientError as e:
-                error = AWSError(e)
-                if error.code != 'InvalidGroup.Duplicate':
-                    raise BenchError('Failed to create security group', error)
-
-        try:
-            # Create all instances.
-            size = instances * len(self.clients)
-            progress = progress_bar(
-                self.clients.values(), prefix=f'Creating {size} instances'
-            )
-            for client in progress:
-                client.run_instances(
-                    ImageId=self._get_ami(client),
-                    InstanceType="m5d.xlarge",
-                    KeyName=self.settings.key_name,
-                    MaxCount=instances,
-                    MinCount=instances,
-                    SecurityGroups=['main'],
-                    TagSpecifications=[{
-                        'ResourceType': 'instance',
-                        'Tags': [{
-                            'Key': 'Name',
-                            'Value': 'Main'
-                        }]
-                    }],
-                    EbsOptimized=True,
-                    BlockDeviceMappings=[{
-                        'DeviceName': '/dev/sda1',
-                        'Ebs': {
-                            'VolumeType': 'gp2',
-                            'VolumeSize': 150,
-                            'DeleteOnTermination': True
-                        }
-                    }],
-                )
-
-            # Wait for the instances to boot.
-            Print.info('Waiting for all instances to boot...')
-            self._wait(['pending'])
-            Print.heading(f'Successfully created {size} new instances')
-        except ClientError as e:
-            raise BenchError('Failed to create AWS instances', AWSError(e))
     def terminate_instances(self):
         try:
             ids, _ = self._get(['pending', 'running', 'stopping', 'stopped'])
@@ -329,13 +219,6 @@ class InstanceManager:
     def hosts(self, flat=False):
         try:
             _, ips = self._get(['pending', 'running'])
-            return [x for y in ips.values() for x in y] if flat else ips
-        except ClientError as e:
-            raise BenchError('Failed to gather instances IPs', AWSError(e))
-
-    def main_hosts(self, flat=False):
-        try:
-            _, ips = self._get_main(['pending', 'running'])
             return [x for y in ips.values() for x in y] if flat else ips
         except ClientError as e:
             raise BenchError('Failed to gather instances IPs', AWSError(e))

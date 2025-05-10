@@ -13,11 +13,10 @@ import subprocess
 import json
 
 from benchmark.config import Committee, Key, NodeParameters, BenchParameters, ConfigError
-from benchmark.utils import BenchError, Print, PathMaker, progress_bar
+from benchmark.utils import BenchError, Print, PathMaker, progress_bar, distribute_rate
 from benchmark.commands import CommandMaker
 from benchmark.logs import LogParser, ParseError
 from benchmark.instance import InstanceManager
-
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -141,151 +140,11 @@ class Bench:
         output = c.run(cmd, hide=True)
         self._check_stderr(output)
 
-    # def _update(self, hosts, collocate, protocol):
-    #     if collocate:
-    #         ips = list(set(hosts))
-    #     else:
-    #         ips = list(set([x for y in hosts for x in y]))
-    #
-    #     Print.info(
-    #         f'Updating {len(ips)} machines (branch "{self.settings.branch}")...'
-    #     )
-    #     cmd = [
-    #         f'(cd {self.settings.repo_name} && git fetch -f)',
-    #         f'(cd {self.settings.repo_name} && git checkout -f {self.settings.branch})',
-    #         f'(cd {self.settings.repo_name} && git pull -f)',
-    #         'source $HOME/.cargo/env',
-    #         f'(cd {self.settings.repo_name}/node && {CommandMaker.compile(protocol)})',
-    #         CommandMaker.alias_binaries(
-    #             f'./{self.settings.repo_name}/target/release/'
-    #         )
-    #     ]
-    #     g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
-    #     g.run(' && '.join(cmd), hide=True)
-
-    # def _update(self, hosts, collocate, protocol, crypto):
-    #     if collocate:
-    #         ips = list(set(hosts))
-    #     else:
-    #         ips = list(set([x for y in hosts for x in y]))
-    #
-    #     Print.info(
-    #         f'Updating {len(ips)} machines with local binaries...'
-    #     )
-    #
-    #     # Step 1: Compile locally in ~/narwhal/node
-    #     local_repo_path = os.path.expanduser(f'~/{self.settings.repo_name}')
-    #     node_path = os.path.join(local_repo_path, 'node')
-    #
-    #     try:
-    #         # Compile locally
-    #         Print.info('Compiling locally in ~/narwhal/node...')
-    #         compile_cmd = CommandMaker.compile(protocol, crypto)
-    #         subprocess.run(
-    #             [compile_cmd], shell=True, check=True, cwd=node_path
-    #         )
-    #     except subprocess.CalledProcessError as e:
-    #         raise BenchError(f'Failed to compile locally: {e.stderr}', e)
-    #     except Exception as e:
-    #         raise BenchError('Unexpected error during local compilation', e)
-    #
-    #     # Step 2: Upload binaries to remote instances
-    #     binary_dir = os.path.join(local_repo_path, 'target', 'release')  # Corrected path
-    #     remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
-    #     binaries = ['node', 'benchmark_client']  # Match generated binaries
-    #
-    #     Print.info(f'Uploading binaries to {len(ips)} instances...')
-    #     for ip in ips:
-    #         c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
-    #         try:
-    #             # Ensure remote directory exists
-    #             c.run(f'mkdir -p {remote_binary_dir}', hide=True)
-    #             # Upload each binary
-    #             for binary in binaries:
-    #                 local_path = os.path.join(binary_dir, binary)
-    #                 remote_path = f'{remote_binary_dir}{binary}'
-    #                 if os.path.exists(local_path):
-    #                     c.put(local_path, remote_path)
-    #                     # Set executable permissions
-    #                     c.run(f'chmod +x {remote_path}', hide=True)
-    #             # Create binary aliases
-    #             c.run(
-    #                 CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
-    #                 hide=True
-    #             )
-    #         except Exception as e:
-    #             raise BenchError(f'Failed to upload binaries to {ip}', e)
-    #
-    #     Print.info(f'Successfully updated {len(ips)} machines with local binaries')
-
-    def _update(self, hosts, collocate):
+    def _update(self, hosts, collocate, protocol, crypto):
         if collocate:
             ips = list(set(hosts))
         else:
             ips = list(set([x for y in hosts for x in y]))
-
-        Print.info(
-            f'Downloading binaries for {len(ips)} machines (branch "{self.settings.branch}")...'
-        )
-
-        # GitHub Release URLs
-        binaries = ['node', 'benchmark_client']
-        base_url = f"https://github.com/{self.settings.owner}/{self.settings.name}/releases/latest/download"
-
-        # Remote target directory
-        # remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
-        remote_binary_dir = f'/home/ubuntu/'
-
-        # Track successful downloads
-        success_count = 0
-        total_count = len(ips)
-        failed_ips = []
-
-        # Download binaries on each instance
-        for ip in ips:
-            c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
-            try:
-                # Ensure remote directory exists
-                c.run(f'mkdir -p {remote_binary_dir}', hide=True)
-
-                # Download each binary
-                for binary in binaries:
-                    download_url = f'{base_url}/{binary}'
-                    remote_path = f'{remote_binary_dir}{binary}'
-                    # Use curl to download (with -L for redirects, -f for fail on error)
-                    c.run(
-                        f'curl -L -f -o {remote_path} {download_url}',
-                        hide=True
-                    )
-                    # Set executable permissions
-                    c.run(f'chmod +x {remote_path}', hide=True)
-
-                # Create binary aliases
-                # c.run(
-                #     CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
-                #     hide=True
-                # )
-                success_count += 1
-            except Exception as e:
-                failed_ips.append(ip)
-                Print.warn(f'Failed to download binaries to {ip}: {str(e)}')
-                continue
-
-        # Print success summary
-        Print.info(f'Successfully downloaded binaries to {success_count}/{total_count} instances')
-        if failed_ips:
-            Print.warn(f'Failed instances: {", ".join(failed_ips)}')
-
-
-    def _update_private(self, hosts, collocate, protocol, crypto):
-        if collocate:
-            ips = list(set(hosts))
-        else:
-            ips = list(set([x for y in hosts for x in y]))
-
-        Print.info(
-            f'Downloading binaries from GitHub Release for {len(ips)} machines...'
-        )
 
         Print.info(f'Testing SSH connectivity for {len(ips)} machines...')
 
@@ -315,313 +174,28 @@ class Bench:
             )
         Print.info(f'Successfully connected to all {len(ips)} instances')
 
-
         Print.info(
-            f'Downloading binaries from GitHub Release for {len(ips)} machines...'
+            f'Updating {len(ips)} machines with local binaries...'
         )
-        # Step 1: Get latest release metadata locally
-        github_token = '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'
-        if protocol == 'dolphin' and crypto == 'pq':
-            tag = 'bullshark-pq'
-        elif protocol == 'dolphin' and crypto == 'origin':
-            tag = 'bullshark-npq'
-        elif protocol == 'tusk' and crypto == 'pq':
-            tag = 'tusk-pq'
-        else:
-            tag = 'tusk-npq'
+
+        # Step 1: Compile locally in ~/narwhal/node
+        local_repo_path = os.path.expanduser(f'~/{self.settings.repo_name}')
+        node_path = os.path.join(local_repo_path, 'node')
 
         try:
-            result = subprocess.run([
-                'curl',
-                '-H', f'Authorization: token {github_token}',
-                '-H', 'Accept: application/vnd.github.v3+json',
-                f'https://api.github.com/repos/{self.settings.repo_owner}/{self.settings.repo_name}/releases/tags/{tag}'
-            ], capture_output=True, text=True, check=True)
-            release_data = json.loads(result.stdout)
-        except subprocess.CalledProcessError as e:
-            raise BenchError(f'Failed to fetch release metadata: {e.stderr}', e)
-        except json.JSONDecodeError as e:
-            raise BenchError('Failed to parse release JSON', e)
-
-        # Extract asset URLs for node and benchmark_client
-        binaries = ['node', 'benchmark_client']
-        asset_urls = {}
-        for asset in release_data.get('assets', []):
-            if asset['name'] in binaries:
-                asset_urls[asset['name']] = asset['url']
-        missing_binaries = [b for b in binaries if b not in asset_urls]
-        if missing_binaries:
-            raise BenchError(f'Missing binaries in release: {missing_binaries}',Exception('Missing binaries'))
-
-        # Step 2: Download binaries on each instance
-        remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
-        success_count = 0
-        g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
-        cmd = []
-        # Create remote directory
-        cmd.append(f'mkdir -p {remote_binary_dir}')
-        # Download each binary
-        for binary, url in asset_urls.items():
-            cmd.append(
-                f'curl -L -H "Authorization: token {github_token}" '
-                f'-H "Accept: application/octet-stream" '
-                f'{url} -o {remote_binary_dir}{binary}'
+            # Compile locally
+            Print.info('Compiling locally in ~/narwhal/node...')
+            compile_cmd = CommandMaker.compile(protocol, crypto)
+            subprocess.run(
+                [compile_cmd], shell=True, check=True, cwd=node_path
             )
-            # Set executable permissions
-            cmd.append(f'chmod +x {remote_binary_dir}{binary}')
-
-        # Create binary aliases
-        cmd.append(
-            CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/')
-        )
-
-        full_cmd = ' && '.join(cmd)
-
-        try:
-            results = g.run(full_cmd, hide=True, warn=True,timeout=20)
-            # Count successful downloads
-            for ip, result in results.items():
-                if result.exited == 0:
-                    success_count += 1
-                else:
-                    Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
-        except GroupException as e:
-            Print.warn(f'Group execution failed: {e}')
-            for ip, result in e.result.items():
-                if isinstance(result, Exception):
-                    Print.warn(f'Failed to download binaries on {ip}: {result}')
-                elif result.exited == 0:
-                    success_count += 1
-                else:
-                    Print.warn(f'Failed to download binaries on {ip}: {result.stderr}')
-
-        # Step 3: Report success count
-        Print.info(f'Successfully downloaded binaries on {success_count}/{len(ips)} instances')
-        if success_count != len(ips):
-            raise BenchError('Failed to connect to some instances',Exception('SSH Error'))
-
-    # def _update_private(self, hosts, collocate, protocol, crypto):
-    #     if collocate:
-    #         ips = list(set(hosts))
-    #     else:
-    #         ips = list(set([x for y in hosts for x in y]))
-    #
-    #     Print.info(
-    #         f'Downloading binaries from GitHub Release for {len(ips)} machines...'
-    #     )
-    #
-    #     # Step 1: Get GitHub token from environment variable
-    #     github_token = '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'
-    #
-    #     # Step 2: Determine release tag based on protocol and crypto
-    #     if protocol == 'dolphin' and crypto == 'pq':
-    #         tag = 'bullshark-pq'
-    #     elif protocol == 'dolphin' and crypto == 'origin':
-    #         tag = 'bullshark-npq'
-    #     elif protocol == 'tusk' and crypto == 'pq':
-    #         tag = 'tusk-pq'
-    #     else:
-    #         tag = 'tusk-npq'
-    #
-    #     # Step 3: Get latest release metadata locally
-    #     try:
-    #         result = subprocess.run([
-    #             'curl',
-    #             '-H', f'Authorization: token {github_token}',
-    #             '-H', 'Accept: application/vnd.github.v3+json',
-    #             f'https://api.github.com/repos/{self.settings.repo_owner}/{self.settings.repo_name}/releases/tags/{tag}'
-    #         ], capture_output=True, text=True, check=True)
-    #         release_data = json.loads(result.stdout)
-    #     except subprocess.CalledProcessError as e:
-    #         raise BenchError(f'Failed to fetch release metadata: {e.stderr}', e)
-    #     except json.JSONDecodeError as e:
-    #         raise BenchError('Failed to parse release JSON', e)
-    #
-    #     # Step 4: Extract asset URLs for node and benchmark_client
-    #     binaries = ['node', 'benchmark_client']
-    #     asset_urls = {}
-    #     for asset in release_data.get('assets', []):
-    #         if asset['name'] in binaries:
-    #             asset_urls[asset['name']] = asset['url']
-    #     missing_binaries = [b for b in binaries if b not in asset_urls]
-    #     if missing_binaries:
-    #         raise BenchError(f'Missing binaries in release: {missing_binaries}', Exception('Missing binaries'))
-    #
-    #     # Step 5: Download binaries on each instance with retry for timeouts
-    #     remote_binary_dir = '/home/ubuntu/'
-    #     max_retries = 3
-    #     retry_delay = 5  # seconds
-    #     success_count = 0
-    #     failed_ips = set()
-    #
-    #     for binary, url in asset_urls.items():
-    #         Print.info(f'Downloading {binary} to {len(ips)} instances...')
-    #         download_cmd = (
-    #             f'curl -L -H "Authorization: token {github_token}" '
-    #             f'-H "Accept: application/octet-stream" '
-    #             f'{url} -o {remote_binary_dir}{binary} && '
-    #             f'chmod +x {remote_binary_dir}{binary}'
-    #         )
-    #
-    #         # Track successful IPs for this binary
-    #         binary_successful_ips = set()
-    #         retries = {ip: 0 for ip in ips}
-    #
-    #         while retries and max(retries.values()) < max_retries:
-    #             g = Group(*[ip for ip in retries if ip not in binary_successful_ips], user='ubuntu',
-    #                       connect_kwargs=self.connect)
-    #             if not g:
-    #                 break  # All IPs succeeded
-    #
-    #             try:
-    #                 results = g.run(download_cmd, hide=True, warn=True)
-    #                 for conn, result in results.items():
-    #                     ip = conn.host  # Extract IP string from Connection object
-    #                     if result.exited == 0:
-    #                         binary_successful_ips.add(ip)
-    #                         Print.info(f'Successfully downloaded {binary} on {ip}')
-    #                     else:
-    #                         Print.warn(f'Failed to download {binary} on {ip}: {result.stderr}')
-    #                         retries[ip] += 1
-    #             except GroupException as e:
-    #                 for conn, result in e.result.items():
-    #                     ip = conn.host  # Extract IP string from Connection object
-    #                     if isinstance(result, Exception) and 'Connection timed out' in str(result):
-    #                         if retries[ip] < max_retries:
-    #                             retries[ip] += 1
-    #                             Print.warn(
-    #                                 f'Timeout downloading {binary} on {ip}, retry {retries[ip]}/{max_retries}')
-    #                             sleep(retry_delay)
-    #                         else:
-    #                             Print.warn(f'Exhausted retries for {binary} on {ip}')
-    #                             failed_ips.add(ip)
-    #                     elif isinstance(result, Exception):
-    #                         raise BenchError(f'Non-timeout error downloading {binary} on {ip}: {result}', result)
-    #                     elif result.exited != 0:
-    #                         raise BenchError(f'Failed to download {binary} on {ip}: {result.stderr}',
-    #                                          Exception(result.stderr))
-    #
-    #         # Remove IPs that succeeded from retries
-    #         for ip in binary_successful_ips:
-    #             retries.pop(ip, None)
-    #
-    #         # Check if any IPs failed for this binary
-    #         if retries:
-    #             failed_ips.update(retries.keys())
-    #             raise BenchError(
-    #                 f'Failed to download {binary} on {list(retries.keys())} after {max_retries} retries',
-    #                 Exception('Download failed')
-    #             )
-    #
-    #         # Step 6: Update success count
-    #         success_count = len(ips) - len(failed_ips)
-    #         Print.info(f'Successfully downloaded all binaries on {success_count}/{len(ips)} instances')
-    #
-    #         # Step 7: Ensure all instances succeeded
-    #         if failed_ips:
-    #             raise BenchError(
-    #                 f'Not all instances downloaded binaries: {success_count}/{len(ips)} succeeded, failed on {failed_ips}',
-    #                 Exception('Incomplete download')
-    #             )
-
-    # def _config(self, hosts, node_parameters, bench_parameters, update_crs):
-    #     Print.info('Generating configuration files...')
-    #
-    #     # Cleanup all local configuration files.
-    #     cmd = CommandMaker.cleanup()
-    #     subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
-    #
-    #     # Recompile the latest code.
-    #     cmd = CommandMaker.compile(bench_parameters.protocol,bench_parameters.crypto)
-    #     subprocess.run(
-    #         [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
-    #     )
-    #
-    #     # Recompile the gen_files crate
-    #     if bench_parameters.crypto == 'pq':
-    #         cmd = CommandMaker.compile_gen_files_pq()
-    #         subprocess.run(
-    #             [cmd], shell=True, check=True
-    #         )
-    #     else:
-    #         cmd = CommandMaker.compile_gen_files()
-    #         subprocess.run(
-    #             [cmd], shell=True, check=True
-    #         )
-    #
-    #     # Create alias for the client and nodes binary and gen_files.
-    #     cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
-    #     subprocess.run([cmd], shell=True)
-    #
-    #     # Generate configuration files.
-    #     keys = []
-    #     key_files = [PathMaker.key_file(i) for i in range(len(hosts))]
-    #     for filename in key_files:
-    #         cmd = CommandMaker.generate_key(filename).split()
-    #         subprocess.run(cmd, check=True)
-    #         keys += [Key.from_file(filename)]
-    #
-    #     names = [x.name for x in keys]
-    #
-    #     if bench_parameters.collocate:
-    #         workers = bench_parameters.workers
-    #         addresses = OrderedDict(
-    #             (x, [y] * (workers + 1)) for x, y in zip(names, hosts)
-    #         )
-    #     else:
-    #         addresses = OrderedDict(
-    #             (x, y) for x, y in zip(names, hosts)
-    #         )
-    #     committee = Committee(addresses, self.settings.base_port)
-    #     committee.print(PathMaker.committee_file())
-    #
-    #     # generate crs file
-    #     if update_crs:
-    #         if bench_parameters.crypto == 'pq':
-    #             cmd = CommandMaker.generate_crs_q(bench_parameters.n, bench_parameters.log_q, bench_parameters.g,
-    #                                               bench_parameters.kappa, bench_parameters.r, bench_parameters.ell).split()
-    #             subprocess.run(cmd, check=True)
-    #         else:
-    #             fault_tolerance = (len(hosts) - 1) // 3
-    #             cmd = CommandMaker.generate_crs(fault_tolerance).split()
-    #             subprocess.run(cmd, check=True)
-    #
-    #
-    #     node_parameters.print(PathMaker.parameters_file())
-    #
-    #     # Cleanup all nodes and upload configuration files.
-    #     names = names[:len(names) - bench_parameters.faults]
-    #     progress = progress_bar(names, prefix='Uploading config files:')
-    #     for i, name in enumerate(progress):
-    #         for ip in committee.ips(name):
-    #             c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
-    #             if update_crs:
-    #                 c.run(f'{CommandMaker.cleanup()} || true', hide=True)
-    #             else:
-    #                 c.run(f'{CommandMaker.cleanup_exp_crs()} || true', hide=True)
-    #             c.put(PathMaker.committee_file(), '.')
-    #             c.put(PathMaker.key_file(i), '.')
-    #             c.put(PathMaker.parameters_file(), '.')
-    #             if update_crs:
-    #                 c.put(PathMaker.crs_file(), '.')
-    #
-    #     return committee
-
-    def _config(self, hosts, node_parameters, bench_parameters, update_crs):
-        Print.info('Generating configuration files...')
-
-        # Cleanup all local configuration files.
-        cmd = CommandMaker.cleanup()
-        subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
-
-        # Recompile the latest code.
-        cmd = CommandMaker.compile(bench_parameters.protocol, bench_parameters.crypto)
-        subprocess.run(
-            [cmd], check=True, shell=True, cwd=PathMaker.node_crate_path()
-        )
+        except subprocess.CalledProcessError as e:
+            raise BenchError(f'Failed to compile locally: {e.stderr}', e)
+        except Exception as e:
+            raise BenchError('Unexpected error during local compilation', e)
 
         # Recompile the gen_files crate
-        if bench_parameters.crypto == 'pq':
+        if crypto == 'pq':
             cmd = CommandMaker.compile_gen_files_pq()
             subprocess.run(
                 [cmd], shell=True, check=True
@@ -635,6 +209,53 @@ class Bench:
         # Create alias for the client and nodes binary and gen_files.
         cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
         subprocess.run([cmd], shell=True)
+
+        # Step 2: Upload binaries to remote instances in parallel
+        binary_dir = os.path.join(local_repo_path, 'target', 'release')
+        remote_binary_dir = f'/home/ubuntu/{self.settings.repo_name}/target/release/'
+        binaries = ['node', 'benchmark_client']
+
+        def upload_binaries(ip):
+            """Upload binaries to a single instance."""
+            c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+            try:
+                # Ensure remote directory exists
+                c.run(f'mkdir -p {remote_binary_dir}', hide=True)
+                # Upload each binary
+                for binary in binaries:
+                    local_path = os.path.join(binary_dir, binary)
+                    remote_path = f'{remote_binary_dir}{binary}'
+                    if os.path.exists(local_path):
+                        c.put(local_path, remote_path)
+                        # Set executable permissions
+                        c.run(f'chmod +x {remote_path}', hide=True)
+                # Create binary aliases
+                c.run(
+                    CommandMaker.alias_binaries_remote(f'./{self.settings.repo_name}/target/release/'),
+                    hide=True
+                )
+            except Exception as e:
+                raise BenchError(f'Failed to upload binaries to {ip}', e)
+
+        Print.info(f'Uploading binaries to {len(ips)} instances in parallel...')
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [
+                executor.submit(upload_binaries, ip)
+                for ip in ips
+            ]
+            # Use progress bar to track completion
+            progress = progress_bar(futures, prefix='Uploading binaries:')
+            for future in progress:
+                future.result()  # Wait for each task to complete and raise any exceptions
+
+        Print.info(f'Successfully updated {len(ips)} machines with local binaries')
+
+    def _config(self, hosts, node_parameters, bench_parameters, update_crs):
+        Print.info('Generating configuration files...')
+
+        # Cleanup all local configuration files.
+        cmd = CommandMaker.cleanup()
+        subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
 
         # Generate configuration files.
         keys = []
@@ -710,26 +331,48 @@ class Bench:
         hosts = committee.ips()
         self.kill(hosts=hosts, delete_logs=True)
 
-        # Run the clients (they will wait for the nodes to be ready).
-        # Filter all faulty nodes from the client addresses (or they will wait
-        # for the faulty nodes to be online).
+        def run_parallel(tasks):
+            """Execute a list of (host, cmd, log_file) tasks in parallel."""
+            with ThreadPoolExecutor(max_workers=len(hosts)) as executor:
+                futures = [
+                    executor.submit(self._background_run, host, cmd, log_file)
+                    for host, cmd, log_file in tasks
+                ]
+                # Wait for all tasks to complete and collect any errors
+                for future in futures:
+                    try:
+                        future.result()  # Raises any exceptions from _background_run
+                    except ExecutionError as e:
+                        Print.error(f"Error in background run: {str(e)}")
+                        raise
+
+        # Run the clients in parallel
         Print.info('Booting clients...')
         workers_addresses = committee.workers_addresses(faults)
-        rate_share = ceil(rate / committee.workers())
+        rate_shares = distribute_rate(rate, committee.workers())  # Get list of rate_shares
+
+        client_tasks = []
+        rate_share_index = 0  # To track which rate_share to assign
         for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
+                if rate_share_index >= len(rate_shares):
+                    raise ValueError("More clients than rate_shares assigned")
                 host = Committee.ip(address)
                 cmd = CommandMaker.run_client(
                     address,
                     bench_parameters.tx_size,
-                    rate_share,
+                    rate_shares[rate_share_index],  # Use specific rate_share
                     [x for y in workers_addresses for _, x in y]
                 )
                 log_file = PathMaker.client_log_file(i, id)
-                self._background_run(host, cmd, log_file)
+                client_tasks.append((host, cmd, log_file))
+                rate_share_index += 1
 
-        # Run the primaries (except the faulty ones).
+        run_parallel(client_tasks)
+
+        # Run the primaries in parallel
         Print.info('Booting primaries...')
+        primary_tasks = []
         for i, address in enumerate(committee.primary_addresses(faults)):
             host = Committee.ip(address)
             cmd = CommandMaker.run_primary(
@@ -743,15 +386,22 @@ class Bench:
                 debug=debug
             )
             log_file = PathMaker.primary_log_file(i)
-            self._background_run(host, cmd, log_file)
-
+            primary_tasks.append((host, cmd, log_file))
+        run_parallel(primary_tasks)
+        # Sleep if crypto is 'pq'
         if bench_parameters.crypto == 'pq':
             secret_size = bench_parameters.n * bench_parameters.kappa
-            slag = secret_size / 400 + secret_size / 3000 * committee.size()
+            slag = 2 * (secret_size / 400 + secret_size / 4000 * committee.size())
+            Print.info(f'Sleeping for {slag} seconds...')
+            sleep(slag)
+        else:
+            slag = 2 * (bench_parameters.avss_batch_size * 5 / 1000)
+            Print.info(f'Sleeping for {slag} seconds...')
             sleep(slag)
 
-        # Run the workers (except the faulty ones).
+        # Run the workers in parallel
         Print.info('Booting workers...')
+        worker_tasks = []
         for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
                 host = Committee.ip(address)
@@ -764,53 +414,16 @@ class Bench:
                     debug=debug
                 )
                 log_file = PathMaker.worker_log_file(i, id)
-                self._background_run(host, cmd, log_file)
+                worker_tasks.append((host, cmd, log_file))
+        run_parallel(worker_tasks)
 
-        # Wait for all transactions to be processed.
+        # Wait for all transactions to be processed
         duration = bench_parameters.duration
         for _ in progress_bar(range(20), prefix=f'Running benchmark ({duration} sec):'):
             sleep(ceil(duration / 20))
         self.kill(hosts=hosts, delete_logs=False)
 
-    # def _logs(self, committee, faults):
-    #     # Delete local logs (if any).
-    #     cmd = CommandMaker.clean_logs()
-    #     subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
-    #
-    #     # Download log files.
-    #     primary_addresses = committee.primary_addresses(faults)
-    #     progress = progress_bar(
-    #         primary_addresses, prefix='Downloading primaries logs:')
-    #     for i, address in enumerate(progress):
-    #         host = Committee.ip(address)
-    #         c = Connection(host, user='ubuntu', connect_kwargs=self.connect)
-    #         c.get(
-    #             PathMaker.primary_log_file(i),
-    #             local=PathMaker.primary_log_file(i)
-    #         )
-    #
-    #     workers_addresses = committee.workers_addresses(faults)
-    #     progress = progress_bar(
-    #         workers_addresses, prefix='Downloading workers logs:')
-    #     for i, addresses in enumerate(progress):
-    #         for id, address in addresses:
-    #             host = Committee.ip(address)
-    #             c = Connection(host, user='ubuntu',
-    #                            connect_kwargs=self.connect)
-    #             c.get(
-    #                 PathMaker.client_log_file(i, id),
-    #                 local=PathMaker.client_log_file(i, id)
-    #             )
-    #             c.get(
-    #                 PathMaker.worker_log_file(i, id),
-    #                 local=PathMaker.worker_log_file(i, id)
-    #             )
-    #
-    #
-    #
-    #     # Parse logs and return the parser.
-    #     Print.info('Parsing logs and computing performance...')
-    #     return LogParser.process(PathMaker.logs_path(), faults=faults)
+
 
     def _logs(self, committee, faults):
         # Delete local logs (if any).
@@ -888,7 +501,7 @@ class Bench:
         # Update nodes.
         if update:
             try:
-                self._update_private(
+                self._update(
                     selected_hosts,
                     bench_parameters.collocate,
                     bench_parameters.protocol,
@@ -932,6 +545,9 @@ class Bench:
                             bench_parameters.collocate,
                             r,
                             bench_parameters.tx_size,
+                            bench_parameters.protocol,
+                            bench_parameters.crypto,
+                            node_parameters.json['eval_beacon']
                         ))
                     except (subprocess.SubprocessError, GroupException, ParseError) as e:
                         self.kill(hosts=selected_hosts)

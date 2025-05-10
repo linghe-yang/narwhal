@@ -78,6 +78,11 @@ pub struct Parameters {
     #[cfg(feature = "dolphin")]
     /// The leader timeout value. Denominated in ms.
     pub timeout: u64,
+    
+    pub beacon_req_delay: u64,
+    pub breeze_epoch_limit: u64,
+    
+    pub eval_beacon: bool,
 }
 
 impl Default for Parameters {
@@ -92,6 +97,9 @@ impl Default for Parameters {
             max_batch_delay: 100,
             #[cfg(feature = "dolphin")]
             timeout: 5_000,
+            beacon_req_delay: 0,
+            breeze_epoch_limit: 20,
+            eval_beacon: true,
         }
     }
 }
@@ -109,6 +117,7 @@ impl Parameters {
         info!("Max batch delay set to {} ms", self.max_batch_delay);
         #[cfg(feature = "dolphin")]
         info!("Leader timeout set to {} ms", self.timeout);
+        info!("Beacon request delay set to {} ms", self.beacon_req_delay);
     }
 }
 

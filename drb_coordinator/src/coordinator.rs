@@ -4,8 +4,9 @@ use model::breeze_universal::{BreezeCertificate, BreezeReconRequest};
 use model::types_and_const::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use log::info;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{watch,RwLock};
 
 pub struct Coordinator {
     committee: Arc<RwLock<Committee>>,
@@ -36,7 +37,9 @@ pub struct Coordinator {
     decided_common_core: HashSet<Epoch>,
     beacon_reconstructed: HashMap<(Epoch, usize), RandomNum>,
     
-    recover_signal_sender: watch::Sender<()>
+    recover_signal_sender: watch::Sender<()>,
+
+    eval_beacon: bool
 }
 
 impl Coordinator {
@@ -56,7 +59,9 @@ impl Coordinator {
         global_coin_res_sender: Sender<(Round, Result<RandomNum, DrbError>)>,
         beacon_res_sender: Sender<((Epoch, usize),Result<RandomNum, DrbError>)>,
 
-        recover_signal_sender: watch::Sender<()>
+        recover_signal_sender: watch::Sender<()>,
+
+        eval_beacon: bool,
     ) {
         let certificate_buffer = HashMap::new();
         let decided_common_core = HashSet::new();
@@ -81,7 +86,9 @@ impl Coordinator {
                 certificate_buffer,
                 decided_common_core,
                 beacon_reconstructed,
-                recover_signal_sender
+                recover_signal_sender,
+
+                eval_beacon
             }
             .run()
             .await;
@@ -89,11 +96,19 @@ impl Coordinator {
     }
     async fn run(&mut self) {
         self.b_share_cmd_sender.send(0).await.unwrap();
+        info!("Share command send for epoch:{}", 0);
         let max_epoch = *MAX_EPOCH.get().unwrap();
         let beacon_per_epoch = *BEACON_PER_EPOCH.get().unwrap();
+        info!("Beacons for leader election per epoch:{}", max_epoch);
+        if self.eval_beacon {
+            info!("Beacons for output per epoch:{}", beacon_per_epoch);
+        }else {
+            info!("Beacons for output per epoch:{}", 0);
+        }
         loop {
             tokio::select! {
                 Some(cer) = self.certificate_from_breeze.recv() => {
+                    info!("Breeze Certificate received for epoch:{}", cer.epoch);
                     if cer.epoch == 0{
                         self.certificate_to_init_consensus.send(cer).await.unwrap();
                     }else {
@@ -103,7 +118,9 @@ impl Coordinator {
                 Some(cc) = self.cc_decided_from_init_consensus.recv()=>{
                     self.certificate_buffer.insert(0, cc);
                     self.decided_common_core.insert(0);
+                    info!("Common core for epoch:{} decided. Beacon resource add:{}", 0, beacon_per_epoch);
                     self.b_share_cmd_sender.send(1).await.unwrap();
+                    info!("Share command send for epoch:{}", 1);
                     self.recover_signal_sender.send(()).unwrap();
                 }
                 Some(cer) = self.cer_decided_from_consensus.recv() =>{
@@ -119,7 +136,9 @@ impl Coordinator {
                     let fault_tolerance = committee.authorities_fault_tolerance();
                     if inner_map.len() >= fault_tolerance + 1{
                         self.decided_common_core.insert(epoch);
+                        info!("Common core for epoch:{} decided. Beacon resource add:{}", epoch, beacon_per_epoch);
                         self.b_share_cmd_sender.send(epoch + 1).await.unwrap();
+                        info!("Share command send for epoch:{}", epoch + 1);
                     }
                 }
 

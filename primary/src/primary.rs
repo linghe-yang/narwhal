@@ -196,6 +196,7 @@ impl Primary {
             signature_service,
             parameters.header_size,
             parameters.max_header_delay,
+            parameters.breeze_epoch_limit,
             /* rx_core */ rx_parents,
             /* rx_workers */ rx_our_digests,
             /* tx_core */ tx_headers,

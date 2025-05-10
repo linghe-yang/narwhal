@@ -11,9 +11,9 @@
         "branch": "bullshark-drb"
     },
     "instances": {
-        "type": "c6i.4xlarge",
+        "type": "c4.4xlarge",
         "regions": [
-            "ap-northeast-1"
+            "ap-northeast-1","us-west-1","eu-north-1","sa-east-1","ca-central-1"
         ]
     }
 }

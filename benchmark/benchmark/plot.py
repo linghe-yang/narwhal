@@ -25,7 +25,7 @@ def default_major_formatter(x, pos):
 def sec_major_formatter(x, pos):
     if pos is None:
         return
-    return f'{float(x)/1000:.1f}'
+    return f'{int(x)}'
 
 
 @tick.FuncFormatter
@@ -63,7 +63,40 @@ class Ploter:
 
     def _latency(self, data, scale=1):
         values = findall(r' Latency: (\d+) \+/- (\d+)', data)
-        values = [(float(x)/scale, float(y)/scale) for x, y in values]
+        # Keep as ms, no conversion
+        values = [(int(x) / 1000, int(y) / 1000) for x, y in values]
+        return list(zip(*values))
+
+    def _beacon_output_rate(self, data):
+        values = findall(r' Beacon Output Rate: (\d+\.?\d*) \+/- (\d+\.?\d*)', data)
+        # Convert from beacons/s to beacons/min (multiply by 60)
+        values = [(float(x) * 60, float(y) * 60) for x, y in values]
+        return list(zip(*values))
+
+    def _beacon_resource_rate(self, data):
+        values = findall(r' Beacon Resource Generation Rate: (\d+\.?\d*) \+/- (\d+\.?\d*)', data)
+        # Convert from beacons/s to beacons/min (multiply by 60)
+        values = [(float(x) * 60, float(y) * 60) for x, y in values]
+        return list(zip(*values))
+
+    def _beacon_batch_size(self, data):
+        values = findall(r'Beacon batch size: (\d+)', data)
+        if len(values) != 1:
+            raise PlotError('Expected exactly one Beacon batch size value')
+        return int(values[0])
+
+    def _gather_latency(self, data):
+        values = findall(r' Gather Latency: (\d+\.?\d*) \+/- (\d+\.?\d*)', data)
+        batch_size = self._beacon_batch_size(data)
+        # Convert to amortized latency (ms/beacon)
+        values = [(int(float(x)  / batch_size), int(float(y)  / batch_size)) for x, y in values]
+        return list(zip(*values))
+
+    def _beacon_latency(self, data):
+        values = findall(r' Beacon Latency: (\d+\.?\d*) \+/- (\d+\.?\d*)', data)
+        batch_size = self._beacon_batch_size(data)
+        # Convert to amortized latency (ms/beacon)
+        values = [(int(float(x)  / batch_size), int(float(y)  / batch_size)) for x, y in values]
         return list(zip(*values))
 
     def _variable(self, data):
@@ -94,7 +127,7 @@ class Ploter:
                 linestyle='dotted', marker=next(markers), capsize=3
             )
 
-        plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=3)
+        plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=2)
         plt.xlim(xmin=0)
         plt.ylim(bottom=0)
         plt.xlabel(x_label, fontweight='bold')
@@ -105,7 +138,7 @@ class Ploter:
         ax = plt.gca()
         ax.xaxis.set_major_formatter(default_major_formatter)
         ax.yaxis.set_major_formatter(default_major_formatter)
-        if 'latency' in type:
+        if type in ['latency', 'gather_latency', 'beacon_latency']:
             ax.yaxis.set_major_formatter(sec_major_formatter)
         if len(y_label) > 1:
             secaxy = ax.secondary_yaxis(
@@ -118,45 +151,64 @@ class Ploter:
             plt.savefig(PathMaker.plot_file(type, x), bbox_inches='tight')
 
     @staticmethod
-    def nodes(data):
-        x = search(r'Committee size: (\d+)', data).group(1)
-        f = search(r'Faults: (\d+)', data).group(1)
-        faults = f'({f} faulty)' if f != '0' else ''
-        return f'{x} nodes {faults}'
-
-    @staticmethod
-    def workers(data):
-        x = search(r'Workers per node: (\d+)', data).group(1)
-        f = search(r'Faults: (\d+)', data).group(1)
-        faults = f'({f} faulty)' if f != '0' else ''
-        return f'{x} workers {faults}'
-
-    @staticmethod
-    def max_latency(data):
-        x = search(r'Max latency: (\d+)', data).group(1)
-        f = search(r'Faults: (\d+)', data).group(1)
-        faults = f'({f} faulty)' if f != '0' else ''
-        return f'Max latency: {float(x) / 1000:,.1f} s {faults}'
+    def protocol_crypto(data):
+        protocol = search(r'Protocol: (\w+)', data).group(1)
+        crypto = search(r'Crypto: (\w+)', data).group(1)
+        return f'{protocol}-{crypto}'
 
     @classmethod
-    def plot_latency(cls, files, scalability):
+    def plot_tps(cls, files):
         assert isinstance(files, list)
         assert all(isinstance(x, str) for x in files)
-        z_axis = cls.workers if scalability else cls.nodes
-        x_label = 'Throughput (tx/s)'
-        y_label = ['Latency (s)']
-        ploter = cls(files)
-        ploter._plot(x_label, y_label, ploter._latency, z_axis, 'latency')
-
-    @classmethod
-    def plot_tps(cls, files, scalability):
-        assert isinstance(files, list)
-        assert all(isinstance(x, str) for x in files)
-        z_axis = cls.max_latency
-        x_label = 'Workers per node' if scalability else 'Committee size'
+        x_label = 'Nodes'
         y_label = ['Throughput (tx/s)', 'Throughput (MB/s)']
         ploter = cls(files)
-        ploter._plot(x_label, y_label, ploter._tps, z_axis, 'tps')
+        ploter._plot(x_label, y_label, ploter._tps, cls.protocol_crypto, 'tps')
+
+    @classmethod
+    def plot_latency(cls, files):
+        assert isinstance(files, list)
+        assert all(isinstance(x, str) for x in files)
+        x_label = 'Nodes'
+        y_label = ['Latency (s)']
+        ploter = cls(files)
+        ploter._plot(x_label, y_label, ploter._latency, cls.protocol_crypto, 'latency')
+
+    @classmethod
+    def plot_beacon_output_rate(cls, files):
+        assert isinstance(files, list)
+        assert all(isinstance(x, str) for x in files)
+        x_label = 'Nodes'
+        y_label = ['Beacon Output Rate (beacons/min)']
+        ploter = cls(files)
+        ploter._plot(x_label, y_label, ploter._beacon_output_rate, cls.protocol_crypto, 'beacon_output_rate')
+
+    @classmethod
+    def plot_beacon_resource_rate(cls, files):
+        assert isinstance(files, list)
+        assert all(isinstance(x, str) for x in files)
+        x_label = 'Nodes'
+        y_label = ['Beacon Resource Generation Rate (beacons/min)']
+        ploter = cls(files)
+        ploter._plot(x_label, y_label, ploter._beacon_resource_rate, cls.protocol_crypto, 'beacon_resource_rate')
+
+    @classmethod
+    def plot_gather_latency(cls, files):
+        assert isinstance(files, list)
+        assert all(isinstance(x, str) for x in files)
+        x_label = 'Nodes'
+        y_label = ['Amortized Gather Latency (ms/beacon)']
+        ploter = cls(files)
+        ploter._plot(x_label, y_label, ploter._gather_latency, cls.protocol_crypto, 'gather_latency')
+
+    @classmethod
+    def plot_beacon_latency(cls, files):
+        assert isinstance(files, list)
+        assert all(isinstance(x, str) for x in files)
+        x_label = 'Nodes'
+        y_label = ['Amortized Beacon Latency (ms/beacon)']
+        ploter = cls(files)
+        ploter._plot(x_label, y_label, ploter._beacon_latency, cls.protocol_crypto, 'beacon_latency')
 
     @classmethod
     def plot(cls, params_dict):
@@ -165,39 +217,26 @@ class Ploter:
         except PlotError as e:
             raise PlotError('Invalid nodes or bench parameters', e)
 
-        # Aggregate the logs.
-        LogAggregator(params.max_latency).print()
+        # Aggregate the logs
+        LogAggregator(params.nodes, params.protocol, params.crypto, params.rate, params.eval_beacon).print()
 
-        # Make the latency, tps, and robustness graphs.
-        iterator = params.workers if params.scalability() else params.nodes
-        latency_files, tps_files = [], []
-        for f in params.faults:
-            for x in iterator:
-                latency_files += glob(
-                    PathMaker.agg_file(
-                        'latency',
-                        f,
-                        x if not params.scalability() else params.nodes[0],
-                        x if params.scalability() else params.workers[0],
-                        params.collocate,
-                        'any',
-                        params.tx_size,
-                    )
-                )
+        # Collect files for plotting
+        tps_files = []
+        beacon_files = []
+        for protocol in params.protocol:
+            for crypto in params.crypto:
+                tps_files += glob(PathMaker.agg_file('tps', 0, 'x', 1, True, params.rate, 512, protocol=protocol, crypto=crypto, test_beacon=False))
+                if params.eval_beacon:
+                    beacon_files += glob(PathMaker.agg_file('beacon', 0, 'x', 1, True, params.rate, 512, protocol=protocol, crypto=crypto, test_beacon=True))
 
-            for l in params.max_latency:
-                tps_files += glob(
-                    PathMaker.agg_file(
-                        'tps',
-                        f,
-                        'x' if not params.scalability() else params.nodes[0],
-                        'x' if params.scalability() else params.workers[0],
-                        params.collocate,
-                        'any',
-                        params.tx_size,
-                        max_latency=l
-                    )
-                )
-
-        cls.plot_latency(latency_files, params.scalability())
-        cls.plot_tps(tps_files, params.scalability())
+        # Plot graphs based on eval_beacon
+        if params.eval_beacon:
+            cls.plot_tps(tps_files)
+            cls.plot_latency(tps_files)
+            cls.plot_beacon_output_rate(beacon_files)
+            cls.plot_beacon_resource_rate(beacon_files)
+            cls.plot_gather_latency(beacon_files)
+            cls.plot_beacon_latency(beacon_files)
+        else:
+            cls.plot_tps(tps_files)
+            cls.plot_latency(tps_files)
