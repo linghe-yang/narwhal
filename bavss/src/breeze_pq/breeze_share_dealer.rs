@@ -1,4 +1,5 @@
-use crate::breeze_pq::calculation::{generate_f_vector, generate_fiat_shamir_challenge_matrix, generate_polynomial_evaluation, generate_proof, generate_t, generate_v, generate_x_vectors, verify_proofs};
+use std::time::Instant;
+use crate::breeze_pq::calculation::*;
 use crate::breeze_pq::polynomial::Polynomial;
 use crate::breeze_pq::zq_int::ZqInt;
 use crate::breeze_structs::{PQCrs, ProofUnit, Share};
@@ -100,17 +101,23 @@ impl Shares {
         let f = generate_f_vector(r, ell, kappa, n, q, polynomials);
         let a = &crs.a;
         let mut s_vectors: Vec<Option<DVector<ZqInt>>> = vec![None; ell + 1];
-
+        #[cfg(feature = "eval")]
+        let start = Instant::now();
         let t = generate_t(&f, &mut s_vectors, r, ell, kappa, n, q, log_q, &a);
+        #[cfg(feature = "eval")]
+        let _duration = start.elapsed();
+        #[cfg(feature = "eval")]
+        println!("Commitment generation time: {:?}", _duration);
 
         let s_vectors: Vec<DVector<ZqInt>> = s_vectors
             .into_iter()
-            .map(|opt| opt.unwrap()) // 如果有 None，这里会 panic
+            .map(|opt| opt.unwrap())
             .collect();
 
         let t_vec = t_dvec_2_t_vec(&t);
         let t_vec_hash = hash_c(&t_vec);
-
+        #[cfg(feature = "eval")]
+        let start = Instant::now();
         let chunk_size = ids.len() / 10 + 1;
         let mut shares: Vec<_> = ids
             .chunks(chunk_size)
@@ -166,11 +173,19 @@ impl Shares {
                     .collect::<Vec<_>>() // 在每个块内串行处理
             })
             .collect();
+        #[cfg(feature = "eval")]
+        let _duration = start.elapsed();
+        #[cfg(feature = "eval")]
+        {
+            println!("Proof generation time: {:?}", _duration);
+            let duration_per_node = _duration / ids.len() as u32;
+            println!("Proof generation time for each node: {:?}", duration_per_node);
+            let duration_per_beacon = _duration / batch_size as u32;
+            println!("Proof generation time per beacon: {:?}", duration_per_beacon);
+        }
 
-        // println!("分片证明时间: {:?}", start.elapsed());
         let (roots, proofs) = generate_merkle_proofs(&shares);
         for (share, proof) in shares.iter_mut().zip(proofs.into_iter()) {
-            // proof 是 (usize, Vec<Vec<u8>>)，我们需要第二个元素
             share.0.merkle_proofs = proof.1;
         }
         (Shares(shares), roots)
@@ -219,8 +234,8 @@ fn hash_u128_vec_to_bytes_vec(inputs: Vec<ZqMod>) -> Vec<Vec<u8>> {
         .into_iter()
         .map(|input| {
             let mut hasher = Sha256::new();
-            hasher.update(&input.to_be_bytes()); // 将 u128 转为大端字节
-            hasher.finalize().to_vec() // 输出 32 字节 Vec<u8>
+            hasher.update(&input.to_be_bytes());
+            hasher.finalize().to_vec()
         })
         .collect()
 }
@@ -237,16 +252,13 @@ fn hash_c(t: &Vec<ZqMod>) -> Digest {
 }
 
 fn transpose_merkle_proofs(matrix: Vec<Vec<(usize, Vec<u8>)>>) -> Vec<(usize, Vec<Vec<u8>>)> {
-    // 如果矩阵为空，直接返回空结果
     if matrix.is_empty() || matrix[0].is_empty() {
         return Vec::new();
     }
-
-    // 获取矩阵的维度
-    let b = matrix.len(); // 行数
-    let n = matrix[0].len(); // 列数
-
-    // 验证矩阵是否合法（每行长度一致，且 usize 是 0 到 n-1）
+    
+    let b = matrix.len();
+    let n = matrix[0].len();
+    
     for row in &matrix {
         if row.len() != n {
             panic!("Invalid matrix: rows have different lengths");
@@ -257,29 +269,17 @@ fn transpose_merkle_proofs(matrix: Vec<Vec<(usize, Vec<u8>)>>) -> Vec<(usize, Ve
             }
         }
     }
-
-    // 初始化转置结果：n 个 (usize, Vec<Vec<u8>>)
+    
     let mut result = Vec::with_capacity(n);
     for j in 0..n {
-        // 每个元素是 (usize, Vec<Vec<u8>>)，usize 是 1 到 n
         let mut column = Vec::with_capacity(b);
-        // 遍历原始矩阵的每一行（共 B 行）
         for i in 0..b {
-            // 获取原始矩阵 (i, j) 位置的 Vec<u8>
             column.push(matrix[i][j].1.clone());
         }
         result.push((j + 1, column));
     }
-
-    // 按 usize 从低到高排序
-    // result.sort_by(|a, b| a.0.cmp(&b.0));
-
     result
 }
-
-// fn vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod) -> DVector<ZqInt> {
-//     DVector::from_vec(vec.iter().map(|&ele| ZqInt::new(ele, q)).collect())
-// }
 fn u_vec_to_dvec(vec: &Vec<ZqMod>, q: ZqMod, kappa_n: usize) -> DVector<ZqInt> {
     if vec.len() > kappa_n {
         panic!("Input vector length {} exceeds kappa_n {}", vec.len(), kappa_n);

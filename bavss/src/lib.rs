@@ -34,13 +34,31 @@ mod test {
     use crate::breeze_structs::PQCrs;
 
     #[test]
-    fn test_share() {
-        let n = 16;
-        let r = 7;
-        let kappa = 16;
+    fn eval_performance() {
+        let n = 32;
+        let r = 4;
+        let ell = 1;
+        let kappa = 32;
         let g = 4;
+        let nodes_values = vec![4, 10];
+        println!("Parameters:");
+        println!("  n: {}", n);
+        println!("  kappa: {}", kappa);
+        println!("  r: {}", r);
+        println!("  ell: {}", ell);
+        println!("  g: {}", g);
+        println!("  batch_size: {}", n * kappa / g);
+        println!("---------------------------------------");
+
+        for nodes in nodes_values {
+            println!("Running test_share with nodes = {}", nodes);
+            test_share(n, r, ell, kappa, g, nodes);
+            println!("---------------------------------------");
+        }
+    }
+
+    fn test_share(n: usize, r: usize, ell: usize, kappa: usize, g: usize, nodes: usize) {
         let beacon_per_epoch = n * kappa / g;
-        
         let batch_size = (n* kappa) / 4;
         let q: ZqMod;
         if let Some(m) = generate_large_prime(32).to_u64() {
@@ -50,16 +68,22 @@ mod test {
         }
         let log_q = (q as f64).log2().ceil() as usize;
         let m = r * n * log_q;
-        let crs = generate_crs_test(n, kappa, m, q, log_q, r);
-        let ids = generate_ids(4);
+        let crs = generate_crs_test(n, kappa, m, q, log_q, r, ell);
+        let ids = generate_ids(nodes);
         let shares = Shares::new(batch_size, 1, ids, 1, &crs);
-        let mut size_mb = 0.0;
+        let mut size_mb_proof = 0.0;
+        let mut size_mb_t = 0.0;
         for share in shares.0.0.iter() {
             let proof = &share.0.eval_proof;
-            size_mb = calculate_proof_size_kb(&proof);
+            let t = &share.0.t;
+            size_mb_proof += calculate_proof_size_kb(proof);
+            size_mb_t += calculate_t_size_kb(t);
         }
-        println!("Total size of proof: {:.3} KB", size_mb);
-        println!("proof size per beacon: {:.3} KB", size_mb / beacon_per_epoch as f64);
+        size_mb_proof = size_mb_proof / shares.0.0.len() as f64;
+        println!("Commitment size: {:.3} KB", size_mb_t);
+        println!("Commitment size per beacon: {:.3} KB", size_mb_t / beacon_per_epoch as f64);
+        println!("Proof size: {:.3} KB", size_mb_proof);
+        println!("Proof size per beacon: {:.3} KB", size_mb_proof / beacon_per_epoch as f64);
     }
 
     fn calculate_proof_size_kb(proof: &[(Vec<ZqMod>, Vec<ZqMod>)]) -> f64 {
@@ -72,6 +96,12 @@ mod test {
         let total_size_bytes = proof_vec_metadata + total_heap_size;
         total_size_bytes as f64 / 1_024.0
     }
+    fn calculate_t_size_kb(t: &Vec<ZqMod>) -> f64 {
+        let vec_metadata_size = size_of::<Vec<ZqMod>>();
+        let data_size = t.len() * size_of::<ZqMod>();
+        let total_size_bytes = vec_metadata_size + data_size;
+        total_size_bytes as f64 / 1_024.0
+    }
     fn generate_crs_test(
         n: usize,
         kappa: usize,
@@ -79,6 +109,7 @@ mod test {
         q: ZqMod,
         log_q: usize,
         r: usize,
+        ell: usize,
     ) -> PQCrs {
         let mut rng = rand::thread_rng();
         let a = (0..n)
@@ -104,7 +135,7 @@ mod test {
             n,
             kappa,
             r,
-            ell: 1,
+            ell
         }
     }
 

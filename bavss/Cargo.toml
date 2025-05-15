@@ -28,3 +28,4 @@ num-prime = "0.4"
 
 [features]
 pq = ["model/pq", "crypto/pq"]
+eval = []
