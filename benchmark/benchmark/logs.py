@@ -50,7 +50,7 @@ class LogParser:
         self.beacons_per_primary = beacons
         self.start_times = start_times
         self.commits_per_primary = commits  # Store individual commits for each primary
-        self.resources_per_primary = resources  # Store resource data
+        self.resources_per_primary = resources  # Store beacon resource data
         self.shares_per_primary = shares
         self.gathers_per_primary = gathers
 
@@ -248,19 +248,6 @@ class LogParser:
                     latency += [end-start]
         return mean(latency) if latency else 0
 
-    # def _beacon_rate_per_primary(self):
-    #     """calculate beacon rate for each primary"""
-    #     rates = []
-    #     for idx, beacons in enumerate(self.beacons_per_primary):
-    #         if not beacons:
-    #             rates.append((f'Primary-{idx}', 0))
-    #             continue
-    #         timestamps = [b['timestamp'] for b in beacons]
-    #         duration = max(timestamps) - min(timestamps) if timestamps else 0
-    #         count = len(beacons)
-    #         rate = count / duration if duration > 0 else 0
-    #         rates.append((f'Primary-{idx}', rate))
-    #     return rates
     def _beacon_rate_per_primary(self):
         """Calculate beacon rate for each primary using consensus start and last commit/beacon time"""
         rates = []
@@ -410,15 +397,6 @@ class LogParser:
             f' DAG leaders per epoch: {dag_waves_per_epoch:,}\n'
             f' Max beacon requests per epoch: {beacons_per_epoch:,}\n'
             '\n'
-            # ' + RESULTS:\n'
-            # f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
-            # f' Consensus BPS: {round(consensus_bps):,} B/s\n'
-            # f' Consensus latency: {round(consensus_latency):,} ms\n'
-            # '\n'
-            # f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
-            # f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
-            # f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
-            # '\n'
         )
         if beacons_per_epoch == 0:
             output += (

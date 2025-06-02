@@ -39,27 +39,8 @@ impl Polynomial {
             self.coefficients[index]
         }
     }
-    
-    // pub fn coefficients(&self) -> &DVector<ZqInt> {
-    //     &self.coefficients
-    // }
-    
-    // pub fn modulus(&self) -> ZqMod {
-    //     self.modulus
-    // }
-
-    // pub fn evaluate(&self, x: ZqInt) -> ZqInt {
-    //     assert_eq!(x.modulus(), self.modulus, "Modulus mismatch: {} != {}", x.modulus(), self.modulus);
-    // 
-    //     let mut result = ZqInt::new(0, self.modulus);
-    //     for &coeff in self.coefficients.iter().rev() {
-    //         result = result * x + coeff;
-    //     }
-    //     result
-    // }
 }
 
-// 实现多项式加法
 impl std::ops::Add for Polynomial {
     type Output = Self;
     fn add(self, other: Self) -> Self {
@@ -80,7 +61,6 @@ impl std::ops::Add for Polynomial {
     }
 }
 
-// 实现多项式乘法
 impl std::ops::Mul for Polynomial {
     type Output = Self;
     fn mul(self, other: Self) -> Self {

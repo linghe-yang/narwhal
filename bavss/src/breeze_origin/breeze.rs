@@ -24,7 +24,6 @@ impl Breeze {
         keypair: KeyPair,
         address: SocketAddr,
         id:Id,
-        // committee: Arc<RwLock<Committee>>,
         committee: Committee,
         breeze_share_cmd_receiver: Receiver<Epoch>,
         breeze_certificate_sender: Sender<BreezeCertificate>,
@@ -65,9 +64,8 @@ impl Breeze {
 
         let (breeze_recon_certificate_sender, breeze_recon_certificate_receiver) =
             channel::<(HashSet<Digest>,Epoch, usize)>(CHANNEL_CAPACITY);
-        //lagrange interpolation to get result
+
         BreezeResult::spawn(
-            // Arc::clone(&committee),
             committee.clone(),
             breeze_recon_certificate_receiver,
             breeze_reconstruct_secret_receiver,
@@ -77,7 +75,6 @@ impl Breeze {
         //reconstruct phase
         BreezeReconstruct::spawn(
             node_id,
-            // Arc::clone(&committee),
             committee.clone(),
             breeze_reconstruct_cmd_receiver,
             breeze_recon_certificate_sender,

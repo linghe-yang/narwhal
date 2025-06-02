@@ -38,7 +38,7 @@ impl MessageHandler for BreezeMessageHandler {
                 self.breeze_merkle_roots_sender
                     .send(message)
                     .await
-                    .expect("Failed to send reply to breeze confirm phase");
+                    .expect("Failed to send merkle roots");
             }
             BreezeContent::Reconstruct(_) => {
                 self.breeze_reconstruct_secret_sender

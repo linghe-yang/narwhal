@@ -29,7 +29,19 @@ impl Shares {
         let t = t_vec_to_dvec(&share.t, crs.q);
         let u = u_vec_to_dvec(&share.y_k, crs.q, crs.kappa * crs.n);
         let x = generate_x_vectors(ZqInt::new(id as ZqMod, crs.q), crs.ell, crs.r);
-        verify_proofs(&proofs, &crs.a, t, u, x, crs.ell, crs.r, crs.kappa, crs.n, crs.q, crs.log_q)
+        #[cfg(feature = "eval")]
+        let start = Instant::now();
+        let res = verify_proofs(&proofs, &crs.a, t, u, x, crs.ell, crs.r, crs.kappa, crs.n, crs.q, crs.log_q);
+        #[cfg(feature = "eval")]
+        let _duration = start.elapsed();
+        #[cfg(feature = "eval")]
+        {
+            println!("Verification time: {:?}", _duration);
+            let batch_size = crs.kappa * crs.n / crs.g;
+            println!("Verification time per beacon: {:?}", _duration / batch_size as u32);
+        }
+
+        res
     }
 
 
@@ -107,7 +119,11 @@ impl Shares {
         #[cfg(feature = "eval")]
         let _duration = start.elapsed();
         #[cfg(feature = "eval")]
-        println!("Commitment generation time: {:?}", _duration);
+        {
+            println!("Commitment generation time: {:?}", _duration);
+            println!("Commitment generation time per beacon: {:?}", _duration / batch_size as u32);
+        }
+
 
         let s_vectors: Vec<DVector<ZqInt>> = s_vectors
             .into_iter()
@@ -178,8 +194,6 @@ impl Shares {
         #[cfg(feature = "eval")]
         {
             println!("Proof generation time: {:?}", _duration);
-            let duration_per_node = _duration / ids.len() as u32;
-            println!("Proof generation time for each node: {:?}", duration_per_node);
             let duration_per_beacon = _duration / batch_size as u32;
             println!("Proof generation time per beacon: {:?}", duration_per_beacon);
         }

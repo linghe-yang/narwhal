@@ -392,7 +392,7 @@ class Bench:
         if bench_parameters.crypto == 'pq':
             secret_size = bench_parameters.n * bench_parameters.kappa
             slag = 2 * (secret_size / 400 + secret_size / 4000 * committee.size())
-            Print.info(f'Sleeping for {slag} seconds...')
+            Print.info(f'Sleeping for {slag} seconds...') # wait for epoch 0's complete.
             sleep(slag)
         else:
             slag = 2 * (bench_parameters.avss_batch_size * 5 / 1000)

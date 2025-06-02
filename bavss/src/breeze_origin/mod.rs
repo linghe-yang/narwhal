@@ -12,14 +12,3 @@ pub(crate)mod breeze_result;
 pub(crate)mod breeze_share;
 
 use super::merkletree;
-
-// #[cfg(test)]
-// mod test{
-//     use crate::breeze_origin::breeze_share_dealer::Shares;
-// 
-//     #[test]
-//     fn test_share(){
-//         let 
-//         let share = Shares::new(20,1,)
-//     }
-// }

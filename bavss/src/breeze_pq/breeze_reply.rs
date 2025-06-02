@@ -30,7 +30,6 @@ impl BreezeReply {
     pub fn spawn(
         node_id: (PublicKey, Id),
         signing_key: SecretKey,
-        // committee: Arc<RwLock<Committee>>,
         committee: Committee,
         breeze_share_receiver: Receiver<BreezeMessage>,
         breeze_merkle_roots_receiver: Receiver<BreezeMessage>,
@@ -64,7 +63,6 @@ impl BreezeReply {
     pub async fn run(&mut self) {
         info!("Breeze reply start to listen");
         loop {
-            // let committee = self.committee.read().await;
             tokio::select! {
                 Some(message) = self.breeze_share_receiver.recv() => {
                     let my_share = match message.content {
@@ -105,11 +103,8 @@ impl BreezeReply {
             let mut reply_msgs = Vec::new();
             let merkle_roots = self.merkle_roots_received.read().await;
             for (epoch, share_map) in &self.shares_received {
-                // 检查 merkle_roots_received 中是否有相同的 Epoch
                 if let Some(merkle_map) = merkle_roots.get(epoch) {
-                    // 遍历 share_map 的 PublicKey
                     for (pk, share) in share_map {
-                        // 检查 merkle_map 中是否有相同的 PublicKey
                         if let Some(digests) = merkle_map.get(pk) {
                             if *pk == self.node_id.0 {
                                 let signature = Signature::new(&share.c, &self.signing_key);

@@ -42,7 +42,6 @@ impl BreezeReply {
                 network,
                 my_shares,
                 common_reference_string,
-
                 cancel_handlers: HashMap::new(),
             }
             .run()
@@ -74,14 +73,13 @@ impl BreezeReply {
                         continue;
                     }
                     let dealer = message.sender;
-                    // 验证并签名
+
                     let signature = Signature::new(&my_share.c, &self.signing_key);
                     
                     let epoch = my_share.epoch;
-                    // 将message中的分片存储
+
                     {
                         let mut my_shares = self.my_shares.write().await;
-                        // 检查是否存在相同sender_id且content相同的消息
                         let has_duplicate = my_shares
                             .iter()
                             .filter(|msg| msg.sender == message.sender)
@@ -92,16 +90,14 @@ impl BreezeReply {
                                 _ => false,
                             });
 
-                        // 如果找到重复项，则跳过插入
+
                         if has_duplicate {
                             error!("Duplicate message content found for sender_id {}, skipping insertion", dealer);
-                            continue; // 跳过本次循环
+                            continue;
                         }
-                        // 执行插入
                         my_shares.push(message);
                     }
-                    
-                    // 回复dealer
+
                     let reply = BreezeMessage::new_reply_message(dealer, self.node_id.0, my_share.c, signature, epoch);
                     let bytes = bincode::serialize(&reply)
                         .expect("Failed to serialize reply in BreezeReply");

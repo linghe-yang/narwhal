@@ -11,7 +11,6 @@ use crate::breeze_structs::{BreezeContent, BreezeMessage};
 use crate::Secret;
 
 pub struct BreezeResult {
-    // committee: Arc<RwLock<Committee>>,
     committee: Committee,
     breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
     breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
@@ -24,7 +23,6 @@ pub struct BreezeResult {
 
 impl BreezeResult {
     pub fn spawn(
-        // committee: Arc<RwLock<Committee>>,
         committee: Committee,
         breeze_recon_certificate_receiver: Receiver<(HashSet<Digest>,Epoch, usize)>,
         breeze_reconstruct_secret_receiver: Receiver<BreezeMessage>,
@@ -81,9 +79,6 @@ impl BreezeResult {
                 }
             }
 
-            // let committee = self.committee.read().await;
-            // let threshold = committee.authorities_fault_tolerance() + 1;
-
             let mut secrets_to_reconstruct = Vec::new();
             self.certificates_to_reconstruct_buffer.retain(|(digests, epoch, index)| {
                 let mut digest_can_be_reconstructed = HashSet::new();
@@ -115,7 +110,6 @@ impl BreezeResult {
                     let mut ids = Vec::new();
                     let mut values = Vec::new();
                     for (pk,value) in shares{
-                        // let id = committee.get_id(&pk).unwrap();
                         let id = self.committee.get_id(&pk).unwrap();
                         ids.push(id);
                         values.push(value);

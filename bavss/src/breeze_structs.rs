@@ -247,15 +247,15 @@ impl BreezeMessage {
     pub fn get_epoch(&self) -> Option<Epoch> {
         match &self.content {
             BreezeContent::Share(share) => {
-                Option::from(share.epoch) // 返回第一个 Share 的 epoch，如果存在
+                Option::from(share.epoch)
             }
             BreezeContent::Reply(rm) => {
-                Option::from(rm.epoch) // 返回第一个 Share 的 epoch，如果存在
+                Option::from(rm.epoch)
             }
             BreezeContent::Merkle(rm) => {
-                Option::from(rm.epoch) // 返回第一个 Share 的 epoch，如果存在
+                Option::from(rm.epoch)
             }
-            _ => None, // 如果是 Reply，返回 None
+            _ => None,
         }
     }
 }

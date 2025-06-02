@@ -3,16 +3,12 @@ use model::types_and_const::{Id, RandomNum};
 
 pub struct BreezeReconResult{
     pub value: Scalar,
-    // pub epoch: Epoch,
-    // pub index: usize,
 }
 
 impl BreezeReconResult {
     pub fn new(output: Scalar ) -> Self {
         BreezeReconResult{
             value: output,
-            // epoch,
-            // index
         }
     }
     
@@ -21,38 +17,19 @@ impl BreezeReconResult {
         Self::lagrange_interpolation_at_zero(&evaluate_points,shares)
     }
 
-    // 计算拉格朗日基多项式 l_i(0) 的值
-    // fn lagrange_basis_at_zero(x_points: &Vec<Scalar>, i: usize) -> Scalar {
-    //     let mut numerator = Scalar::ONE;
-    //     let mut denominator = Scalar::ONE;
-    //     let xi = x_points[i];
-    // 
-    //     for (j, &xj) in x_points.iter().enumerate() {
-    //         if j != i {
-    //             numerator *= Scalar::ZERO - xj; // 分子：(0 - x_j)
-    //             denominator *= xi - xj;         // 分母：(x_i - x_j)
-    //         }
-    //     }
-    // 
-    //     numerator * denominator.invert() // l_i(0) = numerator / denominator
-    // }
-
     pub fn secret_to_number(&self) -> RandomNum {
-        let bytes = self.value.to_bytes(); // 获取底层 [u8; 32]
-        RandomNum::from_le_bytes(bytes[..16].try_into().unwrap()) // 取低8字节转为u128
+        let bytes = self.value.to_bytes();
+        RandomNum::from_le_bytes(bytes[..16].try_into().unwrap())
     }
 
-    // 根据 t+1 个点计算 f(0)
     fn lagrange_interpolation_at_zero(points: &Vec<Scalar>, values: &Vec<Scalar>) -> Scalar {
         let mut result = Scalar::ZERO;
 
         for i in 0..points.len() {
             let mut term = values[i];
 
-            // 计算拉格朗日基函数在x=0处的值
             for j in 0..points.len() {
                 if i != j {
-                    // L_i(0) = ∏(0-x_j)/(x_i-x_j) = ∏(-x_j)/(x_i-x_j)
                     term *= -points[j] * (points[i] - points[j]).invert();
                 }
             }

@@ -43,64 +43,24 @@ pub fn generate_crs(n: usize, log_q_approximate: u32, g: usize, kappa: usize, r:
 fn generate_large_prime(n: u32) -> BigUint {
     let mut rng = rand::thread_rng();
 
-    // 计算 2^(n-1) 和 2^n，作为素数的大致范围
     let lower_bound = BigUint::one() << (n - 1); // 2^(n-1)
     let upper_bound = (BigUint::one() << n) + (BigUint::one() << (n / 2)); // 2^n + 2^(n/2)
 
     loop {
-        // 在 [2^(n-1), 2^n + 2^(n/2)] 范围内随机生成一个数
         let range = &upper_bound - &lower_bound;
         let random_offset: BigUint = rng.gen_biguint_range(&BigUint::zero(), &range);
         let candidate = &lower_bound + random_offset;
-
-        // 检查是否为偶数（最低位为 0 表示偶数）
         let is_even = (&candidate & BigUint::one()).is_zero();
-        // 确保候选数是奇数（素数一定是奇数，除了 2）
         let candidate = if is_even {
             candidate + BigUint::one()
         } else {
             candidate
         };
-
-        // 检查是否为素数
         if is_prime(&candidate, None).probably() {
             return candidate;
         }
     }
 }
-// fn generate_large_prime(n: u32) -> BigUint {
-//     // 计算 2^n
-//     let two = 2.to_biguint().unwrap();
-//     let base = two.pow(n); // 2^n
-//     let upper_bound = two.pow(n + 1); // 2^(n+1) 作为上限
-// 
-//     let mut rng = rand::thread_rng();
-//     let mut candidate;
-// 
-//     // 随机生成一个在 2^n 到 2^(n+1) 之间的数
-//     loop {
-//         // 在 base 和 upper_bound 之间随机选择
-//         let range = &upper_bound - &base;
-//         let offset = rng.gen_biguint_below(&range);
-//         candidate = base.clone() + offset;
-// 
-//         // 确保候选数是奇数（偶数不可能是素数，除了 2）
-//         if &candidate % 2u32 == Zero::zero() {
-//             candidate += BigUint::one();
-//         }
-// 
-//         // 使用 Miller-Rabin 测试素性
-//         if is_prime(&candidate, None).probably() {
-//             return candidate;
-//         }
-// 
-//         // 如果不是素数，继续尝试（这里简单递增，也可以随机重新生成）
-//         candidate += BigUint::from(2u32); // 每次加 2，保持奇数
-//         if candidate >= upper_bound {
-//             candidate = base.clone(); // 如果超出范围，重置到 base
-//         }
-//     }
-// }
 
 #[cfg(not(feature = "pq"))]
 pub fn generate_crs(t: usize) {

@@ -35,12 +35,12 @@ mod test {
 
     #[test]
     fn eval_performance() {
-        let n = 32;
-        let r = 4;
+        let n = 128;
+        let r = 5;
         let ell = 1;
-        let kappa = 32;
+        let kappa = 76;
         let g = 4;
-        let nodes_values = vec![4, 10];
+        let nodes_values = vec![50];
         println!("Parameters:");
         println!("  n: {}", n);
         println!("  kappa: {}", kappa);
@@ -70,7 +70,7 @@ mod test {
         let m = r * n * log_q;
         let crs = generate_crs_test(n, kappa, m, q, log_q, r, ell);
         let ids = generate_ids(nodes);
-        let shares = Shares::new(batch_size, 1, ids, 1, &crs);
+        let shares = Shares::new(batch_size, 1, ids.clone(), 1, &crs);
         let mut size_mb_proof = 0.0;
         let mut size_mb_t = 0.0;
         for share in shares.0.0.iter() {
@@ -84,6 +84,13 @@ mod test {
         println!("Commitment size per beacon: {:.3} KB", size_mb_t / beacon_per_epoch as f64);
         println!("Proof size: {:.3} KB", size_mb_proof);
         println!("Proof size per beacon: {:.3} KB", size_mb_proof / beacon_per_epoch as f64);
+
+        let id = ids.iter().find(|x| x.0 == shares.0.0[0].1).unwrap().1;
+        let res = Shares::verify_shares(
+            &crs,
+            &shares.0.0[0].0,
+            id
+        );
     }
 
     fn calculate_proof_size_kb(proof: &[(Vec<ZqMod>, Vec<ZqMod>)]) -> f64 {
@@ -142,26 +149,21 @@ mod test {
     fn generate_large_prime(n: u32) -> BigUint {
         let mut rng = rand::thread_rng();
 
-        // 计算 2^(n-1) 和 2^n，作为素数的大致范围
         let lower_bound = BigUint::one() << (n - 1); // 2^(n-1)
         let upper_bound = (BigUint::one() << n) + (BigUint::one() << (n / 2)); // 2^n + 2^(n/2)
 
         loop {
-            // 在 [2^(n-1), 2^n + 2^(n/2)] 范围内随机生成一个数
             let range = &upper_bound - &lower_bound;
             let random_offset: BigUint = rng.gen_biguint_range(&BigUint::zero(), &range);
             let candidate = &lower_bound + random_offset;
 
-            // 检查是否为偶数（最低位为 0 表示偶数）
             let is_even = (&candidate & BigUint::one()).is_zero();
-            // 确保候选数是奇数（素数一定是奇数，除了 2）
             let candidate = if is_even {
                 candidate + BigUint::one()
             } else {
                 candidate
             };
 
-            // 检查是否为素数
             if is_prime(&candidate, None).probably() {
                 return candidate;
             }

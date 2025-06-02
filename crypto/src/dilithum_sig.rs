@@ -77,24 +77,6 @@ impl<'de> Deserialize<'de> for PublicKey {
     }
 }
 
-// // 实现Display trait
-// impl fmt::Display for PublicKey {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let bytes = self.0.as_bytes();
-//         write!(f, "PublicKey({})", hex::encode(bytes))
-//     }
-// }
-// 
-// // 实现Debug trait
-// impl fmt::Debug for PublicKey {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let bytes = self.0.as_bytes();
-//         f.debug_struct("PublicKey")
-//             .field("data", &format_args!("0x{}", hex::encode(bytes)))
-//             .finish()
-//     }
-// }
-
 // Implement Display trait
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -148,22 +130,6 @@ impl<'de> Deserialize<'de> for SecretKey {
         Ok(SecretKey(dilithium_sk))
     }
 }
-
-// impl fmt::Display for SecretKey {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let bytes = self.0.as_bytes();
-//         write!(f, "SecretKey({})", hex::encode(bytes))
-//     }
-// }
-// 
-// impl fmt::Debug for SecretKey {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let bytes = self.0.as_bytes();
-//         f.debug_struct("SecretKey")
-//             .field("data", &format_args!("0x{}", hex::encode(bytes)))
-//             .finish()
-//     }
-// }
 impl fmt::Display for SecretKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.0.as_bytes();
@@ -203,14 +169,6 @@ impl Default for Signature {
         Signature(empty_signed_message)
     }
 }
-
-// impl fmt::Debug for Signature {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         f.debug_struct("Signature")
-//             .field("data", &self.0.as_bytes()) 
-//             .finish()
-//     }
-// }
 impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.0.as_bytes();
@@ -224,7 +182,6 @@ impl fmt::Debug for Signature {
 
 impl Eq for Signature {}
 
-// 实现PartialEq
 impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool {
         self.0.as_bytes() == other.0.as_bytes() 

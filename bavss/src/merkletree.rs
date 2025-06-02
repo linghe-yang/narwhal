@@ -7,19 +7,16 @@ use curve25519_dalek::{RistrettoPoint, Scalar};
 use crypto::{Digest as CryptoDigest};
 
 pub fn generate_merkle_tree(input: Vec<Vec<u8>>) -> Result<(CryptoDigest, Vec<(usize, Vec<u8>)>), Box<dyn Error>> {
-    // 将输入转换为 SHA-256 哈希值的叶子节点
     let leaves: Vec<[u8; 32]> = input
         .into_iter()
         .map(|data| Sha256::hash(&data))
         .collect();
 
-    // 创建 Merkle 树
     let tree = MerkleTree::<Sha256>::from_leaves(&leaves);
     let root = tree.root().ok_or("Failed to get Merkle root")?;
 
     let mut proofs = Vec::new();
     for i in 0..leaves.len() {
-        // 为当前 leaf 索引生成 proof
         let indices_to_prove = vec![i];
         let merkle_proof = tree.proof(&indices_to_prove);
         let proof_bytes = merkle_proof.to_bytes();
@@ -30,9 +27,9 @@ pub fn generate_merkle_tree(input: Vec<Vec<u8>>) -> Result<(CryptoDigest, Vec<(u
     Ok((CryptoDigest(root), proofs))
 }
 pub fn verify_merkle_proof(
-    leaf: &Vec<u8>,           // 要验证的叶子节点原始数据
-    proof_tuple: (usize, Vec<u8>),     // Merkle Proof（一系列哈希值）
-    root: CryptoDigest,           // Merkle 树的根哈希
+    leaf: &Vec<u8>,
+    proof_tuple: (usize, Vec<u8>),
+    root: CryptoDigest,
     total_leaves_count: usize,
 ) -> Result<bool, Box<dyn Error>> {
     let root = root.0;

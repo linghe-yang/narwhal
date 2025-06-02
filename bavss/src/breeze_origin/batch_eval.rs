@@ -79,22 +79,15 @@ pub fn batch_verify_eval(crs: &CommonReferenceString, s_hat: &Vec<RistrettoPoint
 
 
 fn generate_blind_mask(crs: &CommonReferenceString, t: usize) -> (Vec<Scalar>, RistrettoPoint) {
-    // 创建随机数生成器
     let mut rng = rand::thread_rng();
-
-    // 生成 p+1 个随机标量
     let mut d: Vec<Scalar> = Vec::with_capacity(t + 1);
     for _ in 0..t + 1 {
-        // 生成 0 到 p 的随机数并转换为 Scalar
-        // 注意：这里使用简单随机数，实际应用中可能需要使用群的阶
         let random_val = rng.gen_range(0..(t+1) as u64);
         d.push(Scalar::from(random_val));
     }
 
-    // 计算承诺 D_hat
-    let mut d_hat = RistrettoPoint::identity(); // 零点
+    let mut d_hat = RistrettoPoint::identity();
     for i in 0..t + 1 {
-        // crs.g[i] * d[i] + D_hat
         let term = crs.g[i] * d[i];
         d_hat = d_hat + term;
     }
@@ -107,7 +100,6 @@ fn generate_eval_matrices(
     s: &Vec<Vec<Scalar>>, // B × (t+1) 矩阵
     y: &Vec<Vec<Scalar>>, // (t+1) × n 矩阵
 ) -> (Vec<Vec<Scalar>>, Vec<Scalar>) {
-    // 检查维度
     let t_plus_1 = d.len();
     let b = s.len();
 
@@ -288,17 +280,7 @@ fn generate_inner_product_proof(
         h_vec: h_z,
     };
     let mut phi: Vec<Vec<IProofUnit>> = Vec::new();
-    // let tmp_phi = Vec::new(); // 空的 tmp_phi
-    // let inner_proof_units = 1;
     let inner_proof_units = inner_product_proof_func(&mut phi, &mut group, &mut sigma_plus_d_hat_quota, &mut y.clone(), t+1, sigma_plus_d);
-    //     inner_product_proof_func(
-    //     tmp_phi,
-    //     group_params,
-    //     sigma_plus_d_hat_quota,
-    //     y,
-    //     p,
-    //     s_and_d,
-    // );
 
     inner_proof_units.clone()
 }
@@ -390,13 +372,12 @@ fn inner_product_proof_func<'a>(
     );
     let mut flag = 0;
 
-    // let mut phi_this: Vec<IProofUnit> = Vec::with_capacity(A.len());
     let mut phi_this: Vec<IProofUnit> = vec![
         IProofUnit {
             a_only: Scalar::ZERO,
-            l: RistrettoPoint::identity(), // Placeholder
-            r: RistrettoPoint::identity(), // Placeholder
-            z: CryptoDigest([0;32]),                 // Placeholder
+            l: RistrettoPoint::identity(),
+            r: RistrettoPoint::identity(),
+            z: CryptoDigest([0;32]),
             b_i: (0,Vec::new()),
             a_tilde: Scalar::ZERO,
         };
@@ -517,7 +498,6 @@ fn inner_product_proof_func<'a>(
         phi_this[idx].r = r[idx];
         phi_this[idx].z = z;
         phi_this[idx].b_i = branches[idx].clone();
-        // phi_this[idx].b_i.idxresult = idxResult[idx].clone();
         l2[idx] = l[idx] * z2;                  // l**{z**2}
         r2[idx] = r[idx] * z2_inv;              // r**{1/z**2}
         s_d_hat_prime[idx] = l2[idx] + s_d_hat[idx] + r2[idx];  // l**{z**2} * A * r**{1/z**2}
@@ -600,7 +580,6 @@ fn inner_product_verify_func(
     let z2 = z_scalar * z_scalar;                            // z**2
     let z2_inv = z_scalar_inv * z_scalar_inv;                // 1/z**2
 
-    // let mut a_prime = RistrettoPoint::identity();
     let l2 = z2* phi[0].l;      // L**{z**2}
     let r2 = z2_inv * phi[0].r;      // R**{1/z**2}
 
@@ -627,63 +606,3 @@ fn inner_product_verify_func(
 
     inner_product_verify_func(group, a_prime, &mut y_prime, p, phi, n)
 }
-
-// fn generate_inner_product_proof_2(
-//     crs: &CommonReferenceString,
-//
-//     sigma_plus_d: &Vec<Scalar>,
-//     y: &Vec<Vec<Scalar>>,
-//     t: usize,
-//     n: usize
-// )-> Vec<Vec<u8>>{
-//     assert_eq!(crs.g.len(), t+1,"Vectors must have the same length");
-//     assert_eq!(crs.h.len(), t+1,"Vectors must have the same length");
-//     assert_eq!(sigma_plus_d.len(), t+1,"Vectors must have the same length");
-//     assert_eq!(y.len(), t+1,"Vectors must have the same length");
-//
-//
-//     let mut transcript = Transcript::new(b"InnerProductProofExample");
-//
-//
-//     let t_plus_1 = t+1;
-//     // 步骤 1: 计算目标长度（大于等于 t+1 的最小 2 的幂）
-//     let target_length = if t_plus_1 == 0 {
-//         1 // 特殊情况：如果 t+1 = 0，则目标长度为 1
-//     } else {
-//         (t_plus_1 as f64).log2().ceil().exp2() as usize
-//     };
-//     // 步骤 2: 计算需要填充的数量
-//     let padding_size = target_length - t_plus_1;
-//
-//
-//     let mut proofs = Vec::new();
-//     for _ in 0..n{
-//         let mut a_vec = sigma_plus_d.clone();
-//         let mut G_vec = crs.g.clone();
-//         let mut H_vec = crs.h.clone();
-//         let G_factors = vec![Scalar::ONE; target_length];
-//         let H_factors = vec![Scalar::ONE; target_length];
-//         a_vec.extend(vec![Scalar::ONE; padding_size]);
-//         G_vec.extend(vec![RistrettoPoint::identity(); padding_size]);
-//         H_vec.extend(vec![RistrettoPoint::identity(); padding_size]);
-//         let mut b_vec = Vec::new();
-//         for row in y{
-//             b_vec.push(row[0]);
-//         }
-//         b_vec.extend(vec![Scalar::ONE; padding_size]);
-//         let proof = InnerProductProof::create(
-//             &mut transcript,
-//             &crs.q,
-//             &G_factors,
-//             &H_factors,
-//             G_vec,
-//             H_vec,
-//             a_vec,
-//             b_vec,
-//         );
-//         let bytes = proof.to_bytes();
-//         proofs.push(bytes);
-//     }
-//     proofs
-//
-// }

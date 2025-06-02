@@ -4,16 +4,12 @@ use crate::Secret;
 
 pub struct BreezeReconResult{
     pub value: Vec<Secret>,
-    // pub epoch: Epoch,
-    // pub index: usize,
 }
 
 impl BreezeReconResult {
     pub fn new(output: Vec<Secret> ) -> Self {
         BreezeReconResult{
             value: output,
-            // epoch,
-            // index
         }
     }
     pub fn interpolate(evaluate_ids: &Vec<Id>, shares: &Vec<Vec<Secret>>, q: ZqMod, cumulated: &mut Vec<ZqMod>) {
@@ -32,8 +28,6 @@ impl BreezeReconResult {
         let res = hash_to_u128(&hash);
         res
     }
-
-    // 根据 t+1 个点计算 f(0)
     fn lagrange_interpolation_at_zero(points: &Vec<ZqMod>, values: &Vec<ZqMod>, q: ZqMod) -> ZqMod {
         let n = points.len();
         let mut result = 0;
@@ -42,23 +36,17 @@ impl BreezeReconResult {
             let xi = points[i];
             let yi = values[i];
 
-            // 计算拉格朗日基函数 L_i(0) = Π_{j ≠ i} (0 - x_j) / (x_i - x_j)
             let mut term = yi;
             for j in 0..n {
                 if i != j {
                     let xj = points[j];
-                    // 分子: 0 - x_j = -x_j
-                    let numerator = (q - xj) % q; // 模 q 下的 -x_j
-                    // 分母: x_i - x_j
-                    let denominator = (xi + q - xj) % q; // 确保正数
-                    // 计算模逆
+                    let numerator = (q - xj) % q;
+                    let denominator = (xi + q - xj) % q;
                     let denominator_inv = mod_inverse(denominator, q);
-                    // term *= numerator * denominator_inv (模 q)
                     term = (term * numerator) % q;
                     term = (term * denominator_inv) % q;
                 }
             }
-            // result += y_i * L_i(0)
             result = (result + term) % q;
         }
 
@@ -98,9 +86,9 @@ fn transpose(shares: &Vec<Vec<Secret>>) -> Vec<Vec<Secret>> {
     }
     let rows = shares.len();
     let cols = shares[0].len();
-    // 确保所有行的长度一致
+
     assert!(shares.iter().all(|row| row.len() == cols), "All rows must have the same length");
-    // 创建转置矩阵
+
     let mut transposed = vec![vec![Secret::default(); rows]; cols];
     for i in 0..rows {
         for j in 0..cols {
@@ -111,17 +99,16 @@ fn transpose(shares: &Vec<Vec<Secret>>) -> Vec<Vec<Secret>> {
 }
 
 fn vec_to_sha256(secrets: &Vec<Secret>) -> [u8; 32] {
-    // 将每个 Secret 转换为字符串并拼接
+
     let concatenated: String = secrets.into_iter()
         .map(|s| s.to_string())
         .collect();
 
-    // 计算 SHA-256 哈希
+
     let mut hasher = Sha256::new();
     hasher.update(concatenated);
     let result = hasher.finalize();
 
-    // 返回固定大小的哈希值
     result.into()
 }
 

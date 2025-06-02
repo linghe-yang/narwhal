@@ -61,11 +61,8 @@ impl BreezeShare {
                     
                     let mut share_map_to_addresses: HashMap<SocketAddr, Bytes> = HashMap::new();
                     let c = shares.get_c();
-                    // 遍历 share_map.value 中的每个 (id, shares) 对
                     for (share, pk) in shares.0 {
-                        // 通过 id 获取对应的 address
                         if let Ok(address) = committee.breeze_address(&pk) {
-                            // 将 shares 插入到新的 HashMap 中，以 address 作为 key
                             let message = BreezeMessage::new_share_message(self.node_id.0, share);
                             let bytes = bincode::serialize(&message).expect("Failed to serialize shares in BreezeShare");
                             share_map_to_addresses.insert(address, Bytes::from(bytes));

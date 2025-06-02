@@ -11,7 +11,7 @@ from benchmark.remote import Bench, BenchError
 
 @task
 def local(ctx, debug=False):
-    ''' Run benchmarks on localhost '''
+    ''' Run benchmarks on localhost (fab local) '''
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -19,8 +19,8 @@ def local(ctx, debug=False):
         'rate': 50_000,
         'tx_size': 512,
         'duration': 20,
-        'protocol': 'dolphin',
-        'crypto': 'origin',
+        'protocol': 'dolphin', # dolphin or tusk
+        'crypto': 'origin', # origin or post_quantum (need extra params)
         'avss_batch_size': 256,
         'leader_per_epoch': 40
     }
@@ -35,7 +35,7 @@ def local(ctx, debug=False):
         'max_batch_delay': 200,  # ms
         'beacon_req_delay': 0, # ms
         'breeze_epoch_limit': 20,
-        'eval_beacon': True
+        'eval_beacon': True # True: log beacon result; False: log consensus result
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
@@ -85,7 +85,7 @@ def local_pq(ctx, debug=False):
 
 @task
 def create(ctx, nodes=4):
-    ''' Create a testbed in the same VPC for debug, since the bandwidth fee is extremely costly for large node number'''
+    ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
     except BenchError as e:

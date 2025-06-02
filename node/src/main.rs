@@ -131,8 +131,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .parse::<u64>()
                 .expect("leader_per_epoch must be a valid number");
             assert!(avss_batch_size >= leader_per_epoch, "avss_batch_size must be greater than leader_per_epoch");
-            BEACON_PER_EPOCH.set(avss_batch_size - leader_per_epoch).unwrap();
-            MAX_EPOCH.set(leader_per_epoch).unwrap();
+            BEACON_PER_EPOCH.set(avss_batch_size - leader_per_epoch).unwrap(); // set global constant
+            MAX_EPOCH.set(leader_per_epoch).unwrap(); // set global constant
             let (breeze_share_cmd_sender, breeze_share_cmd_receiver) =
                 channel(CHANNEL_CAPACITY);
             let (breeze_certificate_sender, breeze_certificate_receiver) =
@@ -161,21 +161,17 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 CommonReferenceString::import(crs_file).context("Failed to load the crs for breeze")?;
             #[cfg(feature = "pq")]
             MAX_INDEX.set(crs.g * (BEACON_PER_EPOCH.get().unwrap() + MAX_EPOCH.get().unwrap()) as usize).unwrap();
-            // let crs = Arc::new(RwLock::new(crs));
+
             let mut address = committee.breeze_address(&keypair.name)?;
             address.set_ip("0.0.0.0".parse()?);
             let id = committee.get_id(&keypair.name).unwrap();
             let mut bft_address = committee.init_bft_address(&keypair.name)?;
             bft_address.set_ip("0.0.0.0".parse()?);
-            // #[cfg(feature = "pq")]
-            // let secret_size = (crs.n * crs.kappa) as f64;
-            // #[cfg(feature = "pq")]
-            // let slag = secret_size / 400f64 + secret_size / 4000f64 * committee.size() as f64;
+
             Breeze::spawn(
                 keypair.clone(),
                 address,
                 id,
-                // Arc::clone(&committee),
                 committee.clone(),
                 breeze_share_cmd_receiver,
                 breeze_certificate_sender,
@@ -191,11 +187,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 cer_to_init_consensus_receiver,
                 init_cc_to_coord_sender
             ).await;
-            // let committee = Arc::new(RwLock::new(committee));
 
             let (recover_signal_sender, mut recover_signal_receiver) = watch::channel(());
             Coordinator::spawn(
-                // Arc::clone(&committee),
                 committee.clone(),
                 breeze_share_cmd_sender,
                 breeze_certificate_receiver,
@@ -209,13 +203,9 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 breeze_result_receiver,
                 global_coin_res_sender,
                 beacon_res_sender,
-
                 recover_signal_sender,
-                
                 parameters.eval_beacon
             ).await;
-            // #[cfg(feature = "pq")]
-            // sleep(Duration::from_secs(slag as u64)).await;
 
             recover_signal_receiver.changed().await?;
 
@@ -295,6 +285,5 @@ async fn analyze(mut rx_output: Receiver<Certificate>, cer_to_coord_sender: Send
         if let Some(cer) = certificate.header.breeze_cer{
             cer_to_coord_sender.send(cer).await.unwrap();
         }
-        // NOTE: Here goes the application logic.
     }
 }

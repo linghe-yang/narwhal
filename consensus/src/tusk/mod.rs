@@ -181,9 +181,7 @@ impl Tusk {
     /// Returns the certificate (and the certificate's digest) originated by the leader of the
     /// specified round (if any).
     async fn leader<'a>(&self, round: Round, dag: &'a Dag) -> Option<&'a (Digest, Certificate)> {
-        // TODO: We should elect the leader of round r-2 using the common coin revealed at round r.
-        // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
-        // compute the coin). We currently just use round-robin.
+
         info!("start to elect leader for round:{}", round);
         let coin;
         self.global_coin_recon_req_sender.send(round).await.unwrap();

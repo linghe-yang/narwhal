@@ -26,6 +26,7 @@ pub struct InitBFT {
     network: ReliableSender,
     cancel_handlers: HashMap<String, Vec<CancelHandler>>,
 }
+//TODO: this is a simple version of auxiliary BFT, which should be replaced by a mature one in real application.
 impl InitBFT {
     pub async fn spawn(
         key_pair: KeyPair,
@@ -211,11 +212,6 @@ impl InitBFT {
             .entry(label)
             .or_insert_with(Vec::new)
             .extend(handlers);
-        // for h in handlers {
-        //     if let Err(_e) = h.await {
-        //         debug!("Broadcast was not successful")
-        //     }
-        // }
     }
 
     fn hash_breeze_certificates(certs: &BTreeSet<BreezeCertificate>) -> [u8; 32] {
@@ -225,15 +221,6 @@ impl InitBFT {
         let result = hasher.finalize();
         result.into()
     }
-    // fn find_address(
-    //     addresses: &Vec<(PublicKey, SocketAddr)>,
-    //     target_pk: &PublicKey,
-    // ) -> Option<SocketAddr> {
-    //     addresses
-    //         .iter()
-    //         .find(|(pk, _)| pk == target_pk)
-    //         .map(|(_, addr)| *addr)
-    // }
 
     fn find_result(
         map: &HashMap<PublicKey, (BTreeSet<BreezeCertificate>,Signature)>,

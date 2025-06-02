@@ -14,7 +14,6 @@ use crate::breeze_structs::{ BreezeMessage, PQCrs, ReconstructShare, Share, Sing
 pub struct BreezeReconstruct {
     node_id: (PublicKey,Id),
     committee: Committee,
-    // committee: Arc<RwLock<Committee>>,
     breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
     breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
     network: ReliableSender,
@@ -27,7 +26,6 @@ impl BreezeReconstruct {
     pub fn spawn(
         node_id: (PublicKey,Id),
         committee: Committee,
-        // committee: Arc<RwLock<Committee>>,
         breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
         breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
         network: ReliableSender,
@@ -64,11 +62,11 @@ impl BreezeReconstruct {
                     let shares_lock = self.valid_shares.read().await;
                     let epoch_shares = match shares_lock.get(&message.epoch) {
                         Some(shares) => shares,
-                        None => continue, // 如果 epoch 不存在，返回空向量
+                        None => continue,
                     };
                     let my_secrets_to_broadcast: Vec<SingleShare> = epoch_shares
-                        .iter() // 遍历键值对
-                        .filter(|(_pk, share)| message.c.contains(&share.c)) // 过滤 c 在 message.c 中
+                        .iter()
+                        .filter(|(_pk, share)| message.c.contains(&share.c))
                         .map(|(pk, share)| SingleShare {
                             dealer: *pk,
                             c: share.c,
@@ -81,7 +79,6 @@ impl BreezeReconstruct {
                         self.node_id.0,
                         ReconstructShare::new(my_secrets_to_broadcast, message.epoch, message.index),
                     );
-                    // let addresses = self.committee.read().await.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
                     let addresses = self.committee.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
                     let bytes = bincode::serialize(&reconstruct_message).expect(
                         "Failed to serialize shares for reconstruction in BreezeReconstruct",

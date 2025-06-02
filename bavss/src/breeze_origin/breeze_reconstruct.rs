@@ -14,7 +14,6 @@ use crate::breeze_structs::{BreezeContent, BreezeMessage, ReconstructShare, Sing
 pub struct BreezeReconstruct {
     node_id: (PublicKey,Id),
     committee: Committee,
-    // committee: Arc<RwLock<Committee>>,
     breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
     breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
     network: ReliableSender,
@@ -26,7 +25,6 @@ impl BreezeReconstruct {
     pub fn spawn(
         node_id: (PublicKey,Id),
         committee: Committee,
-        // committee: Arc<RwLock<Committee>>,
         breeze_reconstruct_cmd_receiver: Receiver<BreezeReconRequest>,
         breeze_recon_certificate_sender: Sender<(HashSet<Digest>,Epoch, usize)>,
         network: ReliableSender,
@@ -52,7 +50,6 @@ impl BreezeReconstruct {
         loop {
             match self.breeze_reconstruct_cmd_receiver.recv().await.unwrap() {
                 message => {
-                    //是否需要await？
                     self.breeze_recon_certificate_sender
                         .send((message.c.clone(), message.epoch, message.index))
                         .await
@@ -81,7 +78,6 @@ impl BreezeReconstruct {
                         self.node_id.0,
                         ReconstructShare::new(my_secrets_to_broadcast, message.epoch, message.index),
                     );
-                    // let addresses = self.committee.read().await.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
                     let addresses = self.committee.all_breeze_addresses().iter().map(|a| a.1).collect::<Vec<_>>();
                     let bytes = bincode::serialize(&reconstruct_message).expect(
                         "Failed to serialize shares for reconstruction in BreezeReconstruct",

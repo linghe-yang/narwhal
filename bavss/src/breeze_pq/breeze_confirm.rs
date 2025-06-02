@@ -20,7 +20,6 @@ pub struct BreezeConfirm {
 impl BreezeConfirm {
     pub fn spawn(
         node_id: (PublicKey,Id),
-        // committee: Arc<RwLock<Committee>>,
         committee: Committee,
         breeze_confirm_receiver: Receiver<BreezeMessage>,
         breeze_certificate_sender: Sender<BreezeCertificate>,
@@ -72,7 +71,6 @@ impl BreezeConfirm {
                                     .and_modify(|cert| cert.insert(receiver, signature.clone()))
                                     .or_insert(BreezeCertificate::new(*c, receiver,epoch, signature));
 
-                                // let mut keys_to_remove = Vec::new();
                                 let quorum_threshold = self.committee.authorities_quorum_threshold();
                                 match certificates.get(&epoch){
                                     Some(cert) => {
@@ -82,9 +80,6 @@ impl BreezeConfirm {
                                             if let Err(_) = self.breeze_certificate_sender.send(cert.clone()).await {
                                                 error!("fail to send certificate to BFT-SMR")
                                             }
-                                            // let mut my_dealer_shares_write = self.my_dealer_shares.write().await;
-                                            // my_dealer_shares_write.remove(&epoch);
-                                            // keys_to_remove.push(e);
                                             delivered_certificates.push(epoch.clone());
                                             certificates.retain(|&e, _| e > epoch);
                                         }
